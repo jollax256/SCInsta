@@ -89,7 +89,6 @@ static void initDownloaders () {
     longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
-    longPress.cancelsTouchesInView = NO; // Allow other gestures to work
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
@@ -276,7 +275,6 @@ static void initDownloaders () {
     longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
-    longPress.cancelsTouchesInView = NO; // Allow other gestures to work
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
@@ -324,6 +322,183 @@ static void initDownloaders () {
 }
 %end
 
+// Download button on story overlay
+%hook IGStoryViewerContainerView
+%property (nonatomic, retain) UIButton *sciDownloadButton;
+
+- (void)didMoveToSuperview {
+    %orig;
+
+    if (![SCIManager getBoolPref:@"dw_story"]) return;
+    if (self.sciDownloadButton) return; // Already added
+
+    // Create download button with SF Symbol
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    
+    // Use SF Symbol for a clean download icon
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
+    UIImage *downloadImage = [UIImage systemImageNamed:@"arrow.down.circle.fill" withConfiguration:config];
+    [btn setImage:downloadImage forState:UIControlStateNormal];
+    btn.tintColor = [UIColor whiteColor];
+    
+    // Add shadow for visibility over varied backgrounds
+    btn.layer.shadowColor = [UIColor blackColor].CGColor;
+    btn.layer.shadowOffset = CGSizeMake(0, 1);
+    btn.layer.shadowOpacity = 0.6;
+    btn.layer.shadowRadius = 3.0;
+    
+    // Position: bottom-right corner, respecting safe area
+    CGFloat bottomPadding = 90.0;
+    if ([SCIUtils isNotch]) {
+        bottomPadding = 120.0;
+    }
+    btn.frame = CGRectMake(self.frame.size.width - 50, self.frame.size.height - bottomPadding, 40, 40);
+    btn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
+    
+    [btn addTarget:self action:@selector(sciDownloadButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    
+    [self addSubview:btn];
+    self.sciDownloadButton = btn;
+}
+
+%new - (void)sciDownloadButtonTapped:(UIButton *)sender {
+    NSLog(@"[SCInsta] Story download button tapped");
+    
+    initDownloaders();
+    
+    @try {
+        id mediaView = nil;
+        
+        // Try to get mediaView property
+        if ([self respondsToSelector:@selector(mediaView)]) {
+            mediaView = self.mediaView;
+        }
+        
+        // Fallback: search subviews for known media view types
+        if (!mediaView) {
+            for (UIView *subview in self.subviews) {
+                if ([subview isKindOfClass:%c(IGStoryPhotoView)] || [subview isKindOfClass:%c(IGStoryVideoView)]) {
+                    mediaView = subview;
+                    break;
+                }
+                // Also search one level deeper
+                for (UIView *deepSubview in subview.subviews) {
+                    if ([deepSubview isKindOfClass:%c(IGStoryPhotoView)] || [deepSubview isKindOfClass:%c(IGStoryVideoView)]) {
+                        mediaView = deepSubview;
+                        break;
+                    }
+                }
+                if (mediaView) break;
+            }
+        }
+        
+        if (!mediaView) {
+            NSLog(@"[SCInsta] Could not find media view in story container");
+            [SCIUtils showErrorHUDWithDescription:@"Could not find story media"];
+            return;
+        }
+        
+        // ===== PHOTO STORY =====
+        if ([mediaView isKindOfClass:%c(IGStoryPhotoView)]) {
+            NSLog(@"[SCInsta] Downloading story photo");
+            
+            NSURL *photoUrl = nil;
+            
+            // Method 1: via item (IGMedia)
+            if ([mediaView respondsToSelector:@selector(item)]) {
+                photoUrl = [SCIUtils getPhotoUrlForMedia:[mediaView item]];
+            }
+            
+            // Method 2: via photoView.imageSpecifier.url
+            if (!photoUrl) {
+                @try {
+                    IGImageProgressView *photoView = [mediaView valueForKey:@"photoView"];
+                    if (photoView && photoView.imageSpecifier) {
+                        photoUrl = photoView.imageSpecifier.url;
+                    }
+                } @catch (NSException *e) {
+                    NSLog(@"[SCInsta] photoView fallback failed: %@", e);
+                }
+            }
+            
+            if (!photoUrl) {
+                [SCIUtils showErrorHUDWithDescription:@"Could not extract photo URL from story"];
+                return;
+            }
+            
+            [imageDownloadDelegate downloadFileWithURL:photoUrl
+                                         fileExtension:[[photoUrl lastPathComponent] pathExtension]
+                                              hudLabel:nil];
+        }
+        // ===== VIDEO STORY =====
+        else if ([mediaView isKindOfClass:%c(IGStoryVideoView)]) {
+            NSLog(@"[SCInsta] Downloading story video");
+            
+            NSURL *videoUrl = nil;
+            
+            // Method 1: videoPlayer._video.allVideoURLs (haoict method)
+            @try {
+                id videoPlayer = [mediaView valueForKey:@"videoPlayer"];
+                if (videoPlayer) {
+                    IGVideo *video = MSHookIvar<IGVideo *>(videoPlayer, "_video");
+                    if (video) {
+                        videoUrl = [SCIUtils getVideoUrl:video];
+                    }
+                }
+            } @catch (NSException *e) {
+                NSLog(@"[SCInsta] videoPlayer method failed: %@", e);
+            }
+            
+            // Method 2: captionDelegate.currentStoryItem
+            if (!videoUrl) {
+                @try {
+                    if ([mediaView respondsToSelector:@selector(captionDelegate)]) {
+                        IGStoryFullscreenSectionController *controller = [(IGStoryVideoView *)mediaView captionDelegate];
+                        if (controller && [controller respondsToSelector:@selector(currentStoryItem)]) {
+                            IGMedia *media = controller.currentStoryItem;
+                            if (media) {
+                                videoUrl = [SCIUtils getVideoUrlForMedia:media];
+                            }
+                        }
+                    }
+                } @catch (NSException *e) {
+                    NSLog(@"[SCInsta] captionDelegate method failed: %@", e);
+                }
+            }
+            
+            // Method 3: Cache-based AVPlayer search on media view
+            if (!videoUrl) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)mediaView];
+            }
+            
+            // Method 4: Cache-based AVPlayer search on parent controller view
+            if (!videoUrl) {
+                UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+                if (parentVC) {
+                    videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+                }
+            }
+            
+            if (!videoUrl) {
+                [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from story"];
+                return;
+            }
+            
+            [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                         fileExtension:@"mp4"
+                                              hudLabel:nil];
+        }
+        else {
+            NSLog(@"[SCInsta] Unknown media view type: %@", NSStringFromClass([mediaView class]));
+            [SCIUtils showErrorHUDWithDescription:@"Unknown story media type"];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Crash in Story button download: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
+    }
+}
+%end
+
 
 /* * Profile pictures * */
 
@@ -357,110 +532,5 @@ static void initDownloaders () {
     [imageDownloadDelegate downloadFileWithURL:imageUrl
                                  fileExtension:[[imageUrl lastPathComponent] pathExtension]
                                       hudLabel:@"Loading"];
-}
-%end
-
-
-/* * Story Overlay Button * */
-
-%hook IGStoryFullscreenOverlayView
-- (void)layoutSubviews {
-    %orig;
-
-    if ([SCIManager getBoolPref:@"dw_story"]) {
-        [self setupDownloadButton];
-    }
-}
-
-%new
-- (void)setupDownloadButton {
-    if ([self viewWithTag:2938]) return; // Unique Tag to prevent duplicates
-
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
-    btn.tag = 2938;
-    [btn setTitle:@"⬇️" forState:UIControlStateNormal];
-    [btn setBackgroundColor:[UIColor colorWithWhite:0 alpha:0.5]];
-    btn.layer.cornerRadius = 20; // Half of width/height
-    btn.clipsToBounds = YES;
-    
-    // Position: Bottom Right, slightly up to avoid "Send Message" bar and keyboard
-    // Adjust y-offset as needed. 150-180 points from bottom is usually safe for Stories.
-    CGFloat safeBottom = self.safeAreaInsets.bottom;
-    CGFloat buttonSize = 40;
-    CGFloat padding = 20;
-    
-    // Position it above the typical "Send message" area
-    btn.frame = CGRectMake(self.bounds.size.width - buttonSize - padding, 
-                           self.bounds.size.height - 180 - safeBottom, 
-                           buttonSize, 
-                           buttonSize);
-    
-    [btn addTarget:self action:@selector(handleDownloadTap) forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:btn];
-    [self bringSubviewToFront:btn];
-}
-
-%new
-- (void)handleDownloadTap {
-    // Provide haptic feedback
-    UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [generator impactOccurred];
-
-    @try {
-        NSURL *videoUrl = nil;
-
-        // 1. Try Primary Extraction via Controller Traversal
-        // We are in the OverlayView, so we look up for the controller
-        UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-        
-        if (parentVC && [parentVC isKindOfClass:%c(IGStoryFullscreenSectionController)]) {
-            IGStoryFullscreenSectionController *controller = (IGStoryFullscreenSectionController *)parentVC;
-            if ([controller respondsToSelector:@selector(currentStoryItem)]) {
-                 IGMedia *media = controller.currentStoryItem;
-                 if (media) {
-                     videoUrl = [SCIUtils getVideoUrlForMedia:media];
-                 }
-            }
-        }
-        
-        // 2. Fallback: Aggressive Cache Search (Reels Style)
-        // Since we are in an overlay, 'self' won't contain the player.
-        // We MUST search the parent controller's view hierarchy.
-        if (!videoUrl) {
-            if (!parentVC) parentVC = [SCIUtils nearestViewControllerForView:self];
-            
-            if (parentVC) {
-                // NSLog(@"[SCInsta] Searching parent VC view for player: %@", [parentVC class]);
-                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-            }
-        }
-        
-        // 3. Last Fallback: Check if the overlay's delegate (often the controller) has info
-        if (!videoUrl && [self respondsToSelector:@selector(gestureDelegate)]) {
-            id delegate = [self gestureDelegate];
-            if (delegate && [delegate isKindOfClass:%c(IGStoryFullscreenSectionController)]) {
-                 IGStoryFullscreenSectionController *controller = (IGStoryFullscreenSectionController *)delegate;
-                 if ([controller respondsToSelector:@selector(currentStoryItem)]) {
-                     IGMedia *media = controller.currentStoryItem;
-                     if (media) {
-                         videoUrl = [SCIUtils getVideoUrlForMedia:media];
-                     }
-                 }
-            }
-        }
-
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from story"];
-            return;
-        }
-
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:@"mp4"
-                                          hudLabel:nil];
-    } @catch (NSException *exception) {
-        NSLog(@"[SCInsta] Crash in Story Button download: %@", exception);
-        [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
-    }
 }
 %end

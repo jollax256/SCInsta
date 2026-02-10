@@ -159,6 +159,7 @@
 
 @interface IGStoryPhotoView : UIView
 - (id)item;
+@property(readonly, nonatomic) IGImageProgressView *photoView;
 
 - (void)addLongPressGestureRecognizer; // new
 @end
@@ -167,8 +168,14 @@
 @property (nonatomic, strong, readwrite) IGMedia *currentStoryItem;
 @end
 
+@interface IGVideoPlayer : NSObject {
+    IGVideo *_video;
+}
+@end
+
 @interface IGStoryVideoView : UIView
 @property (nonatomic, weak, readwrite) IGStoryFullscreenSectionController *captionDelegate;
+@property (nonatomic, retain) IGVideoPlayer *videoPlayer;
 
 - (void)addLongPressGestureRecognizer; // new
 @end
@@ -177,6 +184,14 @@
 @property (nonatomic, weak, readwrite) id gestureDelegate;
 - (id)gestureDelegate;
 - (void)addLongPressGestureRecognizer; // new
+@end
+
+@protocol IGStoryPlayerMediaViewType
+@end
+
+@interface IGStoryViewerContainerView : UIView
+@property (nonatomic, retain) UIView<IGStoryPlayerMediaViewType> *mediaView;
+@property (nonatomic, retain) UIButton *sciDownloadButton; // new
 @end
 
 @interface IGDirectVisualMessageViewerController : UIViewController
