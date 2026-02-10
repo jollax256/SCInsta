@@ -72,18 +72,13 @@ static char targetStaticRef[] = "target";
             return;
         }
 
-        // Button config
-        UIButtonConfiguration *config = [UIButtonConfiguration tintedButtonConfiguration];
-        config.background.cornerRadius = 12.0;
-        config.cornerStyle = UIButtonConfigurationCornerStyleFixed;
-        config.contentInsets = NSDirectionalEdgeInsetsMake(13.7, 10, 13.7, 10);
-
-
-        // Left button
+        // Left button (legacy styling for iOS 14.5 SDK)
         UIButton *leftButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        leftButton.configuration = config;
         leftButton.translatesAutoresizingMaskIntoConstraints = NO;
         leftButton.tintColor = [SCIUtils SCIColor_Primary];
+        leftButton.backgroundColor = [[SCIUtils SCIColor_Primary] colorWithAlphaComponent:0.15];
+        leftButton.layer.cornerRadius = 12.0;
+        leftButton.contentEdgeInsets = UIEdgeInsetsMake(13.7, 10, 13.7, 10);
 
         NSMutableAttributedString *attrTitleLeft = [[NSMutableAttributedString alloc] initWithString:@"Background"];
         [attrTitleLeft addAttribute:NSFontAttributeName
@@ -93,15 +88,15 @@ static char targetStaticRef[] = "target";
         [leftButton setAttributedTitle:attrTitleLeft forState:UIControlStateNormal];
         [leftButton sizeToFit];
 
-        [leftButton addAction:[UIAction actionWithHandler:^(__kindof UIAction * _Nonnull action) {
-            [self presentColorPicker:@"Background"];
-        }] forControlEvents:UIControlEventTouchUpInside];
+        [leftButton addTarget:self action:@selector(presentBackgroundColorPicker) forControlEvents:UIControlEventTouchUpInside];
 
-        // Middle button
+        // Middle button (legacy styling for iOS 14.5 SDK)
         UIButton *middleButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        middleButton.configuration = config;
         middleButton.translatesAutoresizingMaskIntoConstraints = NO;
         middleButton.tintColor = [SCIUtils SCIColor_Primary];
+        middleButton.backgroundColor = [[SCIUtils SCIColor_Primary] colorWithAlphaComponent:0.15];
+        middleButton.layer.cornerRadius = 12.0;
+        middleButton.contentEdgeInsets = UIEdgeInsetsMake(13.7, 10, 13.7, 10);
 
         NSMutableAttributedString *attrTitleMiddle = [[NSMutableAttributedString alloc] initWithString:@"Text"];
         [attrTitleMiddle addAttribute:NSFontAttributeName
@@ -111,15 +106,15 @@ static char targetStaticRef[] = "target";
         [middleButton setAttributedTitle:attrTitleMiddle forState:UIControlStateNormal];
         [middleButton sizeToFit];
 
-        [middleButton addAction:[UIAction actionWithHandler:^(__kindof UIAction * _Nonnull action) {
-            [self presentColorPicker:@"Text"];
-        }] forControlEvents:UIControlEventTouchUpInside];
+        [middleButton addTarget:self action:@selector(presentTextColorPicker) forControlEvents:UIControlEventTouchUpInside];
 
-        // Right button
+        // Right button (legacy styling for iOS 14.5 SDK)
         UIButton *rightButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        rightButton.configuration = config;
         rightButton.translatesAutoresizingMaskIntoConstraints = NO;
         rightButton.tintColor = [SCIUtils SCIColor_Primary];
+        rightButton.backgroundColor = [[SCIUtils SCIColor_Primary] colorWithAlphaComponent:0.15];
+        rightButton.layer.cornerRadius = 12.0;
+        rightButton.contentEdgeInsets = UIEdgeInsetsMake(13.7, 10, 13.7, 10);
 
         NSMutableAttributedString *attrTitleRight = [[NSMutableAttributedString alloc] initWithString:@"Emoji"];
         [attrTitleRight addAttribute:NSFontAttributeName
@@ -129,29 +124,7 @@ static char targetStaticRef[] = "target";
         [rightButton setAttributedTitle:attrTitleRight forState:UIControlStateNormal];
         [rightButton sizeToFit];
 
-        [rightButton addAction:[UIAction actionWithHandler:^(__kindof UIAction * _Nonnull action) {
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Enter Emoji Text"
-                                                                           message:@"Click the Apply button after this to see the emoji"
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            
-            [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-                textField.placeholder = @"Type emoji...";
-            }];
-            
-            [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                                      style:UIAlertActionStyleDefault
-                                                    handler:^(UIAlertAction *action) {
-                self.emojiText = alert.textFields[0].text;
-                [self applySCICustomTheme:@"Emoji"];
-            }]];
-            
-            [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                      style:UIAlertActionStyleCancel
-                                                    handler:nil]];
-            
-            UIViewController *vc = [SCIUtils nearestViewControllerForView:self];
-            [vc presentViewController:alert animated:YES completion:nil];
-        }] forControlEvents:UIControlEventTouchUpInside];
+        [rightButton addTarget:self action:@selector(presentEmojiInput) forControlEvents:UIControlEventTouchUpInside];
 
 
         // Create stack view
@@ -186,7 +159,7 @@ static char targetStaticRef[] = "target";
             OBJC_ASSOCIATION_RETAIN_NONATOMIC
         );
     });
-}
+}\n\n%new - (void)presentBackgroundColorPicker {\n    [self presentColorPicker:@\"Background\"];\n}\n\n%new - (void)presentTextColorPicker {\n    [self presentColorPicker:@\"Text\"];\n}\n\n%new - (void)presentEmojiInput {\n    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@\"Enter Emoji Text\"\n                                                                   message:@\"Click the Apply button after this to see the emoji\"\n                                                            preferredStyle:UIAlertControllerStyleAlert];\n    \n    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {\n        textField.placeholder = @\"Type emoji...\";\n    }];\n    \n    [alert addAction:[UIAlertAction actionWithTitle:@\"OK\"\n                                              style:UIAlertActionStyleDefault\n                                            handler:^(UIAlertAction *action) {\n        self.emojiText = alert.textFields[0].text;\n        [self applySCICustomTheme:@\"Emoji\"];\n    }]];\n    \n    [alert addAction:[UIAlertAction actionWithTitle:@\"Cancel\"\n                                              style:UIAlertActionStyleCancel\n                                            handler:nil]];\n    \n    UIViewController *vc = [SCIUtils nearestViewControllerForView:self];\n    [vc presentViewController:alert animated:YES completion:nil];\n}
 
 %new - (void)presentColorPicker:(NSString *)target {
     UIColorPickerViewController *colorPickerController = [[UIColorPickerViewController alloc] init];

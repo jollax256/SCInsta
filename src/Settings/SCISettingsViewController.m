@@ -180,13 +180,8 @@ static char rowStaticRef[] = "row";
             menuButton.titleLabel.font = [UIFont systemFontOfSize:[UIFont preferredFontForTextStyle:UIFontTextStyleBody].pointSize
                                                            weight:UIFontWeightMedium];
             
-            if (@available(iOS 15.0, *)) {
-                UIButtonConfiguration *config = menuButton.configuration ?: [UIButtonConfiguration plainButtonConfiguration];
-                config.contentInsets = NSDirectionalEdgeInsetsMake(8, 8, 8, 8);
-                menuButton.configuration = config;
-            } else {
-                menuButton.contentEdgeInsets = UIEdgeInsetsMake(8, 8, 8, 8);
-            }
+            // Use legacy API for iOS 14.5 SDK compatibility
+            menuButton.contentEdgeInsets = UIEdgeInsetsMake(8, 8, 8, 8);
 
             [menuButton sizeToFit];
             
