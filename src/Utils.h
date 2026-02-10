@@ -50,6 +50,7 @@
 + (NSURL *)getVideoUrl:(IGVideo *)video;
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media;
 + (NSURL *)getCachedVideoUrlForView:(UIView *)view;
++ (void)exportCachedVideoFromView:(UIView *)view completion:(void(^)(NSURL *fileURL, NSError *error))completion;
 
 // View Controllers
 + (UIViewController *)viewControllerForView:(UIView *)view;
