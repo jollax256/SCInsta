@@ -147,6 +147,97 @@
     return [SCIUtils getVideoUrl:video];
 }
 
++ (NSURL *)getVideoUrlForPostItem:(IGPostItem *)postItem {
+    @try {
+        if (!postItem) return nil;
+        
+        IGVideo *video = postItem.video;
+        if (!video) return nil;
+        
+        return [SCIUtils getVideoUrl:video];
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] getVideoUrlForPostItem: Exception: %@", exception);
+        return nil;
+    }
+}
+
++ (NSURL *)getCarouselVideoUrlFromView:(UIView *)view {
+    @try {
+        if (!view) return nil;
+        
+        // Search for IGPageMediaView in the view hierarchy (up and down)
+        // First, search upward through superviews
+        UIView *current = view;
+        while (current) {
+            if ([current isKindOfClass:NSClassFromString(@"IGPageMediaView")]) {
+                IGPageMediaView *pageView = (IGPageMediaView *)current;
+                IGPostItem *currentItem = [pageView currentMediaItem];
+                if (currentItem) {
+                    NSURL *url = [SCIUtils getVideoUrlForPostItem:currentItem];
+                    if (url) {
+                        NSLog(@"[SCInsta] getCarouselVideoUrl: Found video URL from carousel current item (upward search)");
+                        return url;
+                    }
+                }
+            }
+            current = current.superview;
+        }
+        
+        // Then search downward in the view's subviews
+        IGPageMediaView *pageView = (IGPageMediaView *)[self _findViewOfClass:NSClassFromString(@"IGPageMediaView") inView:view depth:0 maxDepth:10];
+        if (pageView) {
+            IGPostItem *currentItem = [pageView currentMediaItem];
+            if (currentItem) {
+                NSURL *url = [SCIUtils getVideoUrlForPostItem:currentItem];
+                if (url) {
+                    NSLog(@"[SCInsta] getCarouselVideoUrl: Found video URL from carousel current item (downward search)");
+                    return url;
+                }
+            }
+        }
+        
+        // Also try searching from parent controller's view
+        UIViewController *parentVC = [self nearestViewControllerForView:view];
+        if (parentVC && parentVC.view != view) {
+            IGPageMediaView *pageView2 = (IGPageMediaView *)[self _findViewOfClass:NSClassFromString(@"IGPageMediaView") inView:parentVC.view depth:0 maxDepth:10];
+            if (pageView2) {
+                IGPostItem *currentItem = [pageView2 currentMediaItem];
+                if (currentItem) {
+                    NSURL *url = [SCIUtils getVideoUrlForPostItem:currentItem];
+                    if (url) {
+                        NSLog(@"[SCInsta] getCarouselVideoUrl: Found video URL from carousel current item (controller search)");
+                        return url;
+                    }
+                }
+            }
+        }
+        
+        return nil;
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] getCarouselVideoUrlFromView: Exception: %@", exception);
+        return nil;
+    }
+}
+
++ (UIView *)_findViewOfClass:(Class)cls inView:(UIView *)view depth:(int)depth maxDepth:(int)maxDepth {
+    @try {
+        if (!view || !cls || depth > maxDepth) return nil;
+        
+        if ([view isKindOfClass:cls]) return view;
+        
+        for (UIView *subview in view.subviews) {
+            UIView *found = [self _findViewOfClass:cls inView:subview depth:depth + 1 maxDepth:maxDepth];
+            if (found) return found;
+        }
+        
+        return nil;
+    }
+    @catch (NSException *exception) {
+        return nil;
+    }
+}
 // AVPlayer cache-based video URL extraction
 + (NSURL *)getCachedVideoUrlForView:(UIView *)view {
     @try {

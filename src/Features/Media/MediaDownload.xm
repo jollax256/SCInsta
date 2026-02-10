@@ -95,14 +95,20 @@ static void initDownloaders () {
     @try {
         NSURL *videoUrl = nil;
 
-        // 1. Try model-based extraction
+        // 1. Try model-based extraction (single video post)
         @try {
             videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
         } @catch (NSException *e) {
             NSLog(@"[SCInsta] Feed video model extraction failed: %@", e);
         }
 
-        // 2. Fallback: search view hierarchy for AVPlayer URL
+        // 2. Try carousel extraction (video on non-first slide)
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Feed video: Trying carousel extraction...");
+            videoUrl = [SCIUtils getCarouselVideoUrlFromView:(UIView *)self];
+        }
+
+        // 3. Fallback: search view hierarchy for AVPlayer URL
         if (!videoUrl) {
             videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
         }
@@ -120,7 +126,7 @@ static void initDownloaders () {
             return;
         }
 
-        // 3. Final fallback: export cached media directly
+        // 4. Final fallback: export cached media directly
         NSLog(@"[SCInsta] Feed video: All URL methods failed, trying cached media export...");
         JGProgressHUD *hud = [[JGProgressHUD alloc] init];
         hud.textLabel.text = @"Saving video...";

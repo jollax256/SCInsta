@@ -49,6 +49,8 @@
 
 + (NSURL *)getVideoUrl:(IGVideo *)video;
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media;
++ (NSURL *)getVideoUrlForPostItem:(IGPostItem *)postItem;
++ (NSURL *)getCarouselVideoUrlFromView:(UIView *)view;
 + (NSURL *)getCachedVideoUrlForView:(UIView *)view;
 + (void)exportCachedVideoFromView:(UIView *)view completion:(void(^)(NSURL *fileURL, NSError *error))completion;
 
