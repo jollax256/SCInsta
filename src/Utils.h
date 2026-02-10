@@ -49,6 +49,7 @@
 
 + (NSURL *)getVideoUrl:(IGVideo *)video;
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media;
++ (NSURL *)getCachedVideoUrlForView:(UIView *)view;
 
 // View Controllers
 + (UIViewController *)viewControllerForView:(UIView *)view;

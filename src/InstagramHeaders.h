@@ -126,8 +126,8 @@
 @end
 
 @interface IGModernFeedVideoCell : UIView
+- (id)mediaCellFeedItem;
 - (void)addLongPressGestureRecognizer; // new
-@property(readonly, nonatomic) IGMedia *video;
 @end
 
 @interface IGSundialViewerVideoCell : UIView

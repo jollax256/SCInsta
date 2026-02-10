@@ -92,19 +92,46 @@ static void initDownloaders () {
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    IGModernFeedVideoCell *cell = (IGModernFeedVideoCell *)self;
-    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:cell.video];
-    if (!videoUrl) {
-        [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+    @try {
+        NSURL *videoUrl = nil;
 
-        return;
+        // 1. Try model-based extraction
+        @try {
+            videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
+        } @catch (NSException *e) {
+            NSLog(@"[SCInsta] Feed video model extraction failed: %@", e);
+        }
+
+        // 2. Fallback: search own view hierarchy for AVPlayer
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Feed video: Model extraction returned nil, trying cache on self...");
+            videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
+        }
+
+        // 3. Fallback: search parent controller's entire view hierarchy
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Feed video: Cache on self returned nil, trying parent controller...");
+            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
+            if (parentVC) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+            }
+        }
+
+        if (!videoUrl) {
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+            return;
+        }
+
+        // Download video & show in share menu
+        initDownloaders();
+        [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                          hudLabel:nil];
     }
-
-    // Download video & show in share menu
-    initDownloaders();
-    [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                 fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                      hudLabel:nil];
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Feed video download exception: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"An error occurred"];
+    }
 }
 %end
 
@@ -173,19 +200,47 @@ static void initDownloaders () {
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
-    
-    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.video];
-    if (!videoUrl) {
-        [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from reel"];
 
-        return;
+    @try {
+        NSURL *videoUrl = nil;
+
+        // 1. Try model-based extraction
+        @try {
+            videoUrl = [SCIUtils getVideoUrlForMedia:self.video];
+        } @catch (NSException *e) {
+            NSLog(@"[SCInsta] Reel video model extraction failed: %@", e);
+        }
+
+        // 2. Fallback: search own view hierarchy for AVPlayer
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Reel video: Model extraction returned nil, trying cache on self...");
+            videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
+        }
+
+        // 3. Fallback: search parent controller's entire view hierarchy
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Reel video: Cache on self returned nil, trying parent controller...");
+            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
+            if (parentVC) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+            }
+        }
+
+        if (!videoUrl) {
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from reel"];
+            return;
+        }
+
+        // Download video & show in share menu
+        initDownloaders();
+        [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                          hudLabel:nil];
     }
-
-    // Download video & show in share menu
-    initDownloaders();
-    [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                 fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                      hudLabel:nil];
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Reel video download exception: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"An error occurred"];
+    }
 }
 %end
 
@@ -253,19 +308,46 @@ static void initDownloaders () {
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.item];
-    
-    if (!videoUrl) {
-        [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+    @try {
+        NSURL *videoUrl = nil;
 
-        return;
+        // 1. Try model-based extraction
+        @try {
+            videoUrl = [SCIUtils getVideoUrlForMedia:self.item];
+        } @catch (NSException *e) {
+            NSLog(@"[SCInsta] Story modern video model extraction failed: %@", e);
+        }
+
+        // 2. Fallback: search own view hierarchy for AVPlayer
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Story modern video: Model extraction returned nil, trying cache on self...");
+            videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
+        }
+
+        // 3. Fallback: search parent controller's entire view hierarchy
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Story modern video: Cache on self returned nil, trying parent controller...");
+            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
+            if (parentVC) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+            }
+        }
+
+        if (!videoUrl) {
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+            return;
+        }
+
+        // Download video & show in share menu
+        initDownloaders();
+        [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                          hudLabel:nil];
     }
-
-    // Download video & show in share menu
-    initDownloaders();
-    [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                 fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                      hudLabel:nil];
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Story modern video download exception: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"An error occurred"];
+    }
 }
 %end
 
@@ -292,40 +374,65 @@ static void initDownloaders () {
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    NSURL *videoUrl;
+    @try {
+        NSURL *videoUrl = nil;
 
-    IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
-    if (captionDelegate) {
-        videoUrl = [SCIUtils getVideoUrlForMedia:captionDelegate.currentStoryItem];
+        // 1. Try model-based extraction (caption delegate or DM video)
+        @try {
+            IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
+            if (captionDelegate) {
+                videoUrl = [SCIUtils getVideoUrlForMedia:captionDelegate.currentStoryItem];
+            }
+            else {
+                // Direct messages video player
+                id parentVC = [SCIUtils nearestViewControllerForView:self];
+                if (parentVC && [parentVC isKindOfClass:%c(IGDirectVisualMessageViewerController)]) {
+                    IGDirectVisualMessageViewerViewModeAwareDataSource *_dataSource = MSHookIvar<IGDirectVisualMessageViewerViewModeAwareDataSource *>(parentVC, "_dataSource");
+                    if (_dataSource) {
+                        IGDirectVisualMessage *_currentMessage = MSHookIvar<IGDirectVisualMessage *>(_dataSource, "_currentMessage");
+                        if (_currentMessage) {
+                            IGVideo *rawVideo = _currentMessage.rawVideo;
+                            if (rawVideo) {
+                                videoUrl = [SCIUtils getVideoUrl:rawVideo];
+                            }
+                        }
+                    }
+                }
+            }
+        } @catch (NSException *e) {
+            NSLog(@"[SCInsta] Story legacy video model extraction failed: %@", e);
+        }
+
+        // 2. Fallback: search own view hierarchy for AVPlayer
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Story legacy video: Model extraction returned nil, trying cache on self...");
+            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
+        }
+
+        // 3. Fallback: search parent controller's entire view hierarchy
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Story legacy video: Cache on self returned nil, trying parent controller...");
+            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+            if (parentVC) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+            }
+        }
+
+        if (!videoUrl) {
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+            return;
+        }
+
+        // Download video & show in share menu
+        initDownloaders();
+        [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                          hudLabel:nil];
     }
-    else {
-        // Direct messages video player
-        id parentVC = [SCIUtils nearestViewControllerForView:self];
-        if (!parentVC || ![parentVC isKindOfClass:%c(IGDirectVisualMessageViewerController)]) return;
-
-        IGDirectVisualMessageViewerViewModeAwareDataSource *_dataSource = MSHookIvar<IGDirectVisualMessageViewerViewModeAwareDataSource *>(parentVC, "_dataSource");
-        if (!_dataSource) return;
-        
-        IGDirectVisualMessage *_currentMessage = MSHookIvar<IGDirectVisualMessage *>(_dataSource, "_currentMessage"); 
-        if (!_currentMessage) return;
-        
-        IGVideo *rawVideo = _currentMessage.rawVideo;
-        if (!rawVideo) return;
-        
-        videoUrl = [SCIUtils getVideoUrl:rawVideo];
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Story legacy video download exception: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"An error occurred"];
     }
-    
-    if (!videoUrl) {
-        [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
-
-        return;
-    }
-
-    // Download video & show in share menu
-    initDownloaders();
-    [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                 fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                      hudLabel:nil];
 }
 %end
 

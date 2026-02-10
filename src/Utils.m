@@ -1,4 +1,5 @@
 #import "Utils.h"
+#import <AVFoundation/AVFoundation.h>
 
 @implementation SCIUtils
 
@@ -144,6 +145,84 @@
     if (!video) return nil;
 
     return [SCIUtils getVideoUrl:video];
+}
+
+// AVPlayer cache-based video URL extraction
++ (NSURL *)getCachedVideoUrlForView:(UIView *)view {
+    @try {
+        if (!view) return nil;
+        
+        AVPlayer *player = [self _findAVPlayerInView:view depth:0 maxDepth:15];
+        if (!player) return nil;
+        
+        AVPlayerItem *currentItem = player.currentItem;
+        if (!currentItem) return nil;
+        
+        AVAsset *asset = currentItem.asset;
+        if (!asset) return nil;
+        
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            NSURL *url = ((AVURLAsset *)asset).URL;
+            if (url) {
+                NSLog(@"[SCInsta] getCachedVideoUrlForView: Found video URL from AVPlayer: %@", url);
+                return url;
+            }
+        }
+        
+        return nil;
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] getCachedVideoUrlForView: Exception: %@", exception);
+        return nil;
+    }
+}
+
++ (AVPlayer *)_findAVPlayerInView:(UIView *)view depth:(int)depth maxDepth:(int)maxDepth {
+    @try {
+        if (!view || depth > maxDepth) return nil;
+        
+        // Check this view's layer
+        CALayer *layer = view.layer;
+        if (layer) {
+            AVPlayer *player = [self _findAVPlayerInLayer:layer depth:0 maxDepth:5];
+            if (player) return player;
+        }
+        
+        // Recurse into subviews
+        for (UIView *subview in view.subviews) {
+            AVPlayer *player = [self _findAVPlayerInView:subview depth:depth + 1 maxDepth:maxDepth];
+            if (player) return player;
+        }
+        
+        return nil;
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] _findAVPlayerInView: Exception: %@", exception);
+        return nil;
+    }
+}
+
++ (AVPlayer *)_findAVPlayerInLayer:(CALayer *)layer depth:(int)depth maxDepth:(int)maxDepth {
+    @try {
+        if (!layer || depth > maxDepth) return nil;
+        
+        if ([layer isKindOfClass:[AVPlayerLayer class]]) {
+            AVPlayer *player = ((AVPlayerLayer *)layer).player;
+            if (player) return player;
+        }
+        
+        // Check sublayers
+        for (CALayer *sublayer in layer.sublayers) {
+            AVPlayer *player = [self _findAVPlayerInLayer:sublayer depth:depth + 1 maxDepth:maxDepth];
+            if (player) return player;
+        }
+        
+        return nil;
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] _findAVPlayerInLayer: Exception: %@", exception);
+        return nil;
+    }
 }
 
 // View Controllers
