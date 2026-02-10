@@ -328,7 +328,10 @@ static void initDownloaders () {
 
 - (void)didMoveToSuperview {
     %orig;
+    [(id)self setupDownloadButton];
+}
 
+%new - (void)setupDownloadButton {
     if (![SCIManager getBoolPref:@"dw_story"]) return;
     if (self.sciDownloadButton) return; // Already added
 
@@ -360,6 +363,7 @@ static void initDownloaders () {
     [self addSubview:btn];
     self.sciDownloadButton = btn;
 }
+
 
 %new - (void)sciDownloadButtonTapped:(UIButton *)sender {
     NSLog(@"[SCInsta] Story download button tapped");

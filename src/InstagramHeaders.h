@@ -184,14 +184,20 @@
 @property (nonatomic, weak, readwrite) id gestureDelegate;
 - (id)gestureDelegate;
 - (void)addLongPressGestureRecognizer; // new
+- (void)setupDownloadButton; // new
 @end
 
 @protocol IGStoryPlayerMediaViewType
 @end
 
+@interface UIView (SCInsta)
+- (void)setupDownloadButton;
+@end
+
 @interface IGStoryViewerContainerView : UIView
 @property (nonatomic, retain) UIView<IGStoryPlayerMediaViewType> *mediaView;
 @property (nonatomic, retain) UIButton *sciDownloadButton; // new
+- (void)setupDownloadButton; // new
 @end
 
 @interface IGDirectVisualMessageViewerController : UIViewController
