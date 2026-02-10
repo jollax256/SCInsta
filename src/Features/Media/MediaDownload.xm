@@ -86,25 +86,45 @@ static void initDownloaders () {
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIManager getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = 2; // 2 fingers for feed videos
 
     [self addGestureRecognizer:longPress];
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
-    if (!videoUrl) {
-        [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+    @try {
+        // 1. Try Primary Extraction
+        NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
+        
+        // 2. Try Cache Fallback (Reels Style)
+        if (!videoUrl) {
+            NSLog(@"[SCInsta] Primary extraction failed for feed video. Trying cache...");
+            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
+            
+            if (!videoUrl) {
+                // Search parent controller's view hierarchy
+                UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+                if (parentVC) {
+                    videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+                }
+            }
+        }
 
-        return;
+        if (!videoUrl) {
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+            return;
+        }
+
+        // Download video & show in share menu
+        initDownloaders();
+        [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                          hudLabel:nil];
+    } @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Crash in Feed video download: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
     }
-
-    // Download video & show in share menu
-    initDownloaders();
-    [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                 fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                      hudLabel:nil];
 }
 %end
 
@@ -262,7 +282,7 @@ static void initDownloaders () {
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIManager getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = 3; // 3 fingers for story videos (2 fingers pauses)
 
     [self addGestureRecognizer:longPress];
 }
