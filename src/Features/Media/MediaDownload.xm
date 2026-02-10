@@ -431,31 +431,40 @@ static void initDownloaders () {
             NSLog(@"[SCInsta] Story legacy video model extraction failed: %@", e);
         }
 
-        // 2. Fallback: search own view hierarchy for AVPlayer
+        // 2. Fallback: search view hierarchy for AVPlayer URL
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Story legacy video: Model extraction returned nil, trying cache on self...");
             videoUrl = [SCIUtils getCachedVideoUrlForView:self];
         }
-
-        // 3. Fallback: search parent controller's entire view hierarchy
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Story legacy video: Cache on self returned nil, trying parent controller...");
-            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-            if (parentVC) {
-                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-            }
+            UIViewController *vc = [SCIUtils nearestViewControllerForView:self];
+            if (vc) videoUrl = [SCIUtils getCachedVideoUrlForView:vc.view];
         }
 
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+        if (videoUrl) {
+            initDownloaders();
+            [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                         fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                              hudLabel:nil];
             return;
         }
 
-        // Download video & show in share menu
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                          hudLabel:nil];
+        // 3. Final fallback: export cached media directly
+        NSLog(@"[SCInsta] Story legacy video: All URL methods failed, trying cached media export...");
+        JGProgressHUD *hud = [[JGProgressHUD alloc] init];
+        hud.textLabel.text = @"Saving video...";
+        [hud showInView:topMostController().view];
+
+        [SCIUtils exportCachedVideoFromView:self completion:^(NSURL *fileURL, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [hud dismiss];
+                if (fileURL && !error) {
+                    [SCIUtils showShareVC:fileURL];
+                } else {
+                    NSLog(@"[SCInsta] Story legacy video export failed: %@", error);
+                    [SCIUtils showErrorHUDWithDescription:@"Could not extract video from story"];
+                }
+            });
+        }];
     }
     @catch (NSException *exception) {
         NSLog(@"[SCInsta] Story legacy video download exception: %@", exception);
