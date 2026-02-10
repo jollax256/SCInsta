@@ -1,20 +1,18 @@
-#import "../../Manager.h"
 #import "../../Utils.h"
 
 %hook IGDirectNotesTrayRowCell
-- (id)objectsForListAdapter:(id)arg1 {
+- (id)listAdapterObjects {
     NSArray *originalObjs = %orig();
     NSMutableArray *filteredObjs = [NSMutableArray arrayWithCapacity:[originalObjs count]];
 
     for (id obj in originalObjs) {
         BOOL shouldHide = NO;
 
-        if ([SCIManager getBoolPref:@"hide_friends_map"]) {
+        if ([SCIUtils getBoolPref:@"hide_friends_map"]) {
 
             if ([obj isKindOfClass:%c(IGDirectNotesTrayUserViewModel)]) {
 
-                // Map cell type
-                if ([[obj valueForKey:@"cellType"] isEqualToNumber:@5]) {
+                if ([[obj valueForKey:@"notePk"] isEqualToString:@"friends_map"]) {
                     NSLog(@"[SCInsta] Hiding friends map");
 
                     shouldHide = YES;

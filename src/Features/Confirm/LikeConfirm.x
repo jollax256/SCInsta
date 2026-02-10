@@ -1,4 +1,3 @@
-#import "../../Manager.h"
 #import "../../Utils.h"
 
 ///////////////////////////////////////////////////////////
@@ -6,7 +5,7 @@
 // Confirmation handlers
 
 #define CONFIRMPOSTLIKE(orig)                             \
-    if ([SCIManager getBoolPref:@"like_confirm"]) {           \
+    if ([SCIUtils getBoolPref:@"like_confirm"]) {           \
         NSLog(@"[SCInsta] Confirm post like triggered");  \
                                                           \
         [SCIUtils showConfirmation:^(void) { orig; }];    \
@@ -16,7 +15,7 @@
     }                                                     \
 
 #define CONFIRMREELSLIKE(orig)                            \
-    if ([SCIManager getBoolPref:@"like_confirm_reels"]) {     \
+    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {     \
         NSLog(@"[SCInsta] Confirm reels like triggered"); \
                                                           \
         [SCIUtils showConfirmation:^(void) { orig; }];    \
@@ -40,11 +39,6 @@
 %end
 %hook IGVideoPlayerOverlayContainerView
 - (void)_handleDoubleTapGesture:(id)arg1 {
-    CONFIRMPOSTLIKE(%orig);
-}
-%end
-%hook IGFeedItemUFICell
-- (void)UFIButtonBarDidTapOnLike:(id)arg1 {
     CONFIRMPOSTLIKE(%orig);
 }
 %end

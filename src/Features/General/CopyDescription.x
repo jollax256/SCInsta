@@ -1,14 +1,16 @@
+#import "../../Utils.h"
 #import "../../InstagramHeaders.h"
-#import "../../Manager.h"
 #import "../../../modules/JGProgressHUD/JGProgressHUD.h"
 
 %hook IGCoreTextView
-- (id)initWithWidth:(CGFloat)width {
-    self = %orig;
-    if ([SCIManager getBoolPref:@"copy_description"]) {
+- (void)didMoveToSuperview {
+    %orig;
+
+    if ([SCIUtils getBoolPref:@"copy_description"]) {
         [self addHandleLongPress];
     }
-    return self;
+
+    return;
 }
 %new - (void)addHandleLongPress {
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
@@ -17,20 +19,32 @@
 }
 
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
-    if (sender.state == UIGestureRecognizerStateBegan) {
-        NSLog(@"[SCInsta] Copying description");
+    if (sender.state != UIGestureRecognizerStateBegan) return;
 
-        // Copy text to system clipboard
-        UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-        pasteboard.string = self.text;
+    // Remove hashtags at end of string
+    NSRegularExpression *regex =
+    [NSRegularExpression regularExpressionWithPattern:@"\\s*(?:#[^\\s]+\\s*)+$"
+                                              options:0
+                                                error:nil];
 
-        // Notify user
-        JGProgressHUD *HUD = [[JGProgressHUD alloc] init];
-        HUD.textLabel.text = @"Copied text to clipboard!";
-        HUD.indicatorView = [[JGProgressHUDSuccessIndicatorView alloc] init];
-        
-        [HUD showInView:topMostController().view];
-        [HUD dismissAfterDelay:2.0];
-    }
+    NSString *result = [[regex stringByReplacingMatchesInString:self.text
+                                                        options:0
+                                                          range:NSMakeRange(0, self.text.length)
+                                                   withTemplate:@""]
+          stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+    NSLog(@"[SCInsta] Copying description");
+
+    // Copy text to system clipboard
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    pasteboard.string = result;
+
+    // Notify user
+    JGProgressHUD *HUD = [[JGProgressHUD alloc] init];
+    HUD.textLabel.text = @"Copied text to clipboard";
+    HUD.indicatorView = [[JGProgressHUDSuccessIndicatorView alloc] init];
+    
+    [HUD showInView:topMostController().view];
+    [HUD dismissAfterDelay:2.0];
 }
 %end

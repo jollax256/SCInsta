@@ -5,10 +5,78 @@
 
 @implementation SCIUtils
 
++ (BOOL)getBoolPref:(NSString *)key {
+    if (![key length] || [[NSUserDefaults standardUserDefaults] objectForKey:key] == nil) return false;
+
+    return [[NSUserDefaults standardUserDefaults] boolForKey:key];
+}
++ (double)getDoublePref:(NSString *)key {
+    if (![key length] || [[NSUserDefaults standardUserDefaults] objectForKey:key] == nil) return 0;
+
+    return [[NSUserDefaults standardUserDefaults] doubleForKey:key];
+}
++ (NSString *)getStringPref:(NSString *)key {
+    if (![key length] || [[NSUserDefaults standardUserDefaults] objectForKey:key] == nil) return @"";
+
+    return [[NSUserDefaults standardUserDefaults] stringForKey:key];
+}
+
++ (void)cleanCache {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSMutableArray<NSError *> *deletionErrors = [NSMutableArray array];
+
+    // Analytics folder
+    NSError *analyticsFolderError;
+    NSString *analyticsFolder = [[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"Application Support/com.burbn.instagram/analytics"];
+    [fileManager removeItemAtURL:[[NSURL alloc] initFileURLWithPath:analyticsFolder] error:&analyticsFolderError];
+
+    if (analyticsFolderError) [deletionErrors addObject:analyticsFolderError];
+    
+    // Caches folder
+    NSString *cachesFolder = [[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"Caches"];
+    NSArray *cachesFolderContents = [fileManager contentsOfDirectoryAtURL:[[NSURL alloc] initFileURLWithPath:cachesFolder] includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles error:nil];
+    
+    for (NSURL *fileURL in cachesFolderContents) {
+        NSError *cacheItemDeletionError;
+        [fileManager removeItemAtURL:fileURL error:&cacheItemDeletionError];
+
+        if (cacheItemDeletionError) [deletionErrors addObject:cacheItemDeletionError];
+    }
+
+    // Log errors
+    if (deletionErrors.count > 1) {
+        for (NSError *error in deletionErrors) {
+            NSLog(@"[SCInsta] File Deletion Error: %@", error);
+        }
+    }
+}
+
+// Displaying View Controllers
++ (void)showQuickLookVC:(NSArray<id> *)items {
+    QLPreviewController *previewController = [[QLPreviewController alloc] init];
+    QuickLookDelegate *quickLookDelegate = [[QuickLookDelegate alloc] initWithPreviewItemURLs:items];
+
+    previewController.dataSource = quickLookDelegate;
+    
+    [topMostController() presentViewController:previewController animated:true completion:nil];
+}
++ (void)showShareVC:(id)item {
+    UIActivityViewController *acVC = [[UIActivityViewController alloc] initWithActivityItems:@[item] applicationActivities:nil];
+    if (is_iPad()) {
+        acVC.popoverPresentationController.sourceView = topMostController().view;
+        acVC.popoverPresentationController.sourceRect = CGRectMake(topMostController().view.bounds.size.width / 2.0, topMostController().view.bounds.size.height / 2.0, 1.0, 1.0);
+    }
+    [topMostController() presentViewController:acVC animated:true completion:nil];
+}
+
 // Colours
-+ (UIColor *)SCIColour_Primary {
++ (UIColor *)SCIColor_Primary {
     return [UIColor colorWithRed:0/255.0 green:152/255.0 blue:254/255.0 alpha:1];
 };
+
++ (UIColor *)SCIColour_Primary {
+    return [self SCIColor_Primary];
+}
 
 // Errors
 + (NSError *)errorWithDescription:(NSString *)errorDesc {
@@ -27,30 +95,22 @@
     hud.textLabel.text = errorDesc;
     hud.indicatorView = [[JGProgressHUDErrorIndicatorView alloc] init];
 
-    // Make HUD non-blocking so user can continue to interact
-    hud.interactionType = JGProgressHUDInteractionTypeBlockNoTouches;
-    
     [hud showInView:topMostController().view];
-    [hud dismissAfterDelay:3.0]; // Reduced delay
-    
-    hud.tapOnHUDViewBlock = ^(JGProgressHUD * _Nonnull hud) {
-        [hud dismiss];
-    };
+    [hud dismissAfterDelay:dismissDelay]; // Used New delay of 4.0 via default param
 
     return hud;
 }
 
 // Media
+// Legacy Robust Implementation for Media URL Extraction
 + (NSURL *)getPhotoUrl:(IGPhoto *)photo {
     if (!photo) return nil;
 
     @try {
         // BHInstagram's method: access _originalImageVersions ivar
-        // This contains an array of IGImageURL objects
         NSArray *originalImageVersions = [photo valueForKey:@"_originalImageVersions"];
         
         if (originalImageVersions && [originalImageVersions isKindOfClass:[NSArray class]] && originalImageVersions.count > 0) {
-            // Iterate to find the highest resolution
             id bestImageVersion = nil;
             CGFloat maxPixels = 0;
 
@@ -67,12 +127,10 @@
                 }
             }
             
-            // Fallback to first item if sort failed
             if (!bestImageVersion) {
                 bestImageVersion = originalImageVersions[0];
             }
 
-            // IGImageURL has a url property
             if ([bestImageVersion respondsToSelector:@selector(url)]) {
                 NSURL *url = [bestImageVersion valueForKey:@"url"];
                 if (url && [url isKindOfClass:[NSURL class]]) {
@@ -81,11 +139,9 @@
             }
         }
         
-        // Fallback: Try old method
         if ([photo respondsToSelector:@selector(imageURLForWidth:)]) {
             NSURL *photoUrl = [photo imageURLForWidth:100000.00];
             if (photoUrl) {
-                NSLog(@"[SCInsta] Found photo URL via imageURLForWidth");
                 return photoUrl;
             }
         }
@@ -93,14 +149,12 @@
         NSLog(@"[SCInsta] Exception in getPhotoUrl: %@", exception);
     }
 
-    NSLog(@"[SCInsta] Error: Could not extract photo URL.");
     return nil;
 }
+
 + (NSURL *)getPhotoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
-
     IGPhoto *photo = media.photo;
-
     return [SCIUtils getPhotoUrl:photo];
 }
 
@@ -131,43 +185,18 @@
     } @catch (NSException *e) { /* Ignore */ }
     
     // 3. Try known method names
-    NSArray *methods = @[@"sortedVideoURLsBySize", @"videoVersions", @"videoURLs", @"versions", @"playbackURL"];
+    NSArray *methods = @[@"sortedVideoURLsBySize", @"videoVersions", @"videoURLs", @"versions", @"playbackURL", @"allVideoURLs"];
     for (NSString *method in methods) {
         @try {
             SEL selector = NSSelectorFromString(method);
             if ([video respondsToSelector:selector]) {
-                // NSLog(@"[SCInsta] Trying method: %@", method);
                 #pragma clang diagnostic push
                 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
                 id result = [video performSelector:selector];
                 #pragma clang diagnostic pop
                 
-                if (result) {
-                    // NSLog(@"[SCInsta] Method %@ returned: %@", method, result);
-                    // Handle array result
-                    if ([result isKindOfClass:[NSArray class]]) {
-                         NSArray *arr = (NSArray *)result;
-                         if (arr.count > 0) {
-                             id first = arr[0];
-                             // Check for dictionary with "url"
-                             if ([first isKindOfClass:[NSDictionary class]]) {
-                                 id url = first[@"url"];
-                                 if ([url isKindOfClass:[NSString class]]) return [NSURL URLWithString:url];
-                                 if ([url isKindOfClass:[NSURL class]]) return url;
-                             }
-                             // Check for object with "url" property
-                             if ([first respondsToSelector:@selector(url)]) {
-                                 id url = [first valueForKey:@"url"];
-                                 if ([url isKindOfClass:[NSURL class]]) return url;
-                                 if ([url isKindOfClass:[NSString class]]) return [NSURL URLWithString:url];
-                             }
-                             // Check if it IS a URL
-                             if ([first isKindOfClass:[NSURL class]]) return first;
-                         }
-                    }
-                    // Handle URL result
-                    if ([result isKindOfClass:[NSURL class]]) return result;
-                }
+                NSURL *extracted = [self extractURLFromVideoResult:result];
+                if (extracted) return extracted;
             }
         } @catch (NSException *e) { /* Ignore */ }
     }
@@ -175,49 +204,26 @@
     return nil;
 }
 
-// Helper method to extract URL from various result types
 + (NSURL *)extractURLFromVideoResult:(id)result {
     if (!result) return nil;
+    if ([result isKindOfClass:[NSURL class]]) return result;
+    if ([result isKindOfClass:[NSString class]]) return [NSURL URLWithString:result];
     
-    // Case 1: Result is already an NSURL
-    if ([result isKindOfClass:[NSURL class]]) {
-        return result;
-    }
-    
-    // Case 2: Result is a string URL
-    if ([result isKindOfClass:[NSString class]]) {
-        return [NSURL URLWithString:result];
-    }
-    
-    // Case 3: Result is an array (like sortedVideoURLsBySize)
     if ([result isKindOfClass:[NSArray class]]) {
         NSArray *array = (NSArray *)result;
         if (array.count < 1) return nil;
-        
-        // First element is usually highest quality
         id firstElement = array[0];
         
-        // Could be a dictionary with "url" key
         if ([firstElement isKindOfClass:[NSDictionary class]]) {
             NSDictionary *dict = (NSDictionary *)firstElement;
             id urlValue = dict[@"url"];
-            if ([urlValue isKindOfClass:[NSString class]]) {
-                return [NSURL URLWithString:urlValue];
-            }
-            if ([urlValue isKindOfClass:[NSURL class]]) {
-                return urlValue;
-            }
+            if ([urlValue isKindOfClass:[NSString class]]) return [NSURL URLWithString:urlValue];
+            if ([urlValue isKindOfClass:[NSURL class]]) return urlValue;
         }
         
-        // Could be a direct URL or string
-        if ([firstElement isKindOfClass:[NSURL class]]) {
-            return firstElement;
-        }
-        if ([firstElement isKindOfClass:[NSString class]]) {
-            return [NSURL URLWithString:firstElement];
-        }
+        if ([firstElement isKindOfClass:[NSURL class]]) return firstElement;
+        if ([firstElement isKindOfClass:[NSString class]]) return [NSURL URLWithString:firstElement];
         
-        // Could be an object with "url" property
         if ([firstElement respondsToSelector:@selector(url)]) {
             #pragma clang diagnostic push
             #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
@@ -227,16 +233,12 @@
         }
     }
     
-    // Case 4: Result is a dictionary
     if ([result isKindOfClass:[NSDictionary class]]) {
         NSDictionary *dict = (NSDictionary *)result;
         id urlValue = dict[@"url"] ?: dict[@"playbackUrl"] ?: dict[@"videoUrl"];
-        if (urlValue) {
-            return [self extractURLFromVideoResult:urlValue];
-        }
+        if (urlValue) return [self extractURLFromVideoResult:urlValue];
     }
     
-    // Case 5: Result has a "url" property
     if ([result respondsToSelector:@selector(url)]) {
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
@@ -245,25 +247,29 @@
         return [self extractURLFromVideoResult:urlResult];
     }
     
+    if ([result isKindOfClass:[NSSet class]]) {
+         return [self extractURLFromVideoResult:[result anyObject]];
+    }
+    
     return nil;
 }
+
+
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
-
     IGVideo *video = media.video;
     if (!video) return nil;
-
     return [SCIUtils getVideoUrl:video];
 }
 
-// Search recursively for a player in subviews (Wrapper)
+// Search recursively for a player in subviews (Legacy Wrapper)
 + (NSURL *)getCachedVideoUrlForView:(UIView *)view {
     return [self getCachedVideoUrlForView:view depth:0];
 }
 
 // Recursive implementation with depth limit
 + (NSURL *)getCachedVideoUrlForView:(UIView *)view depth:(NSInteger)depth {
-    if (!view || depth > 15) return nil; // Increased depth to 15 to find deep Story players
+    if (!view || depth > 15) return nil;
     
     // 1. Check for AVPlayerLayer directly
     if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
@@ -271,28 +277,20 @@
         AVPlayer *player = playerLayer.player;
         if (player) {
             NSURL *url = [self getUrlFromPlayer:player];
-            if (url) {
-                // NSLog(@"[SCInsta] Found URL in AVPlayerLayer: %@", url);
-                return url;
-            }
+            if (url) return url;
         }
     }
     
     // 2. Check common property names for players or wrappers
-    // Reduced search keys for performance
     NSArray *playerKeys = @[@"player", @"videoPlayer", @"avPlayer"];
     
     for (NSString *key in playerKeys) {
         if ([view respondsToSelector:NSSelectorFromString(key)]) {
             id playerObj = [view valueForKey:key];
-            
-            // It might be an AVPlayer
             if (playerObj && [playerObj isKindOfClass:[AVPlayer class]]) {
                 NSURL *url = [self getUrlFromPlayer:(AVPlayer *)playerObj];
                 if (url) return url;
             }
-            
-            // It might be a wrapper
             if (playerObj && [playerObj respondsToSelector:@selector(avPlayer)]) {
                 id innerPlayer = [playerObj valueForKey:@"avPlayer"];
                 if (innerPlayer && [innerPlayer isKindOfClass:[AVPlayer class]]) {
@@ -329,28 +327,21 @@
         return;
     }
 
-    // Try to get the shortcode (usually "code" property)
     NSString *shortcode = nil;
     if ([media respondsToSelector:@selector(code)]) {
-        shortcode = [media valueForKey:@"code"]; // IGMedia often has this
-    } else if ([media respondsToSelector:@selector(pk)]) {
-         // PK is numeric ID, converting to shortcode is complex, skip for now or try to use direct link if possible
-         // But often "pk" is all we have. For now if no code, fail.
+        shortcode = [media valueForKey:@"code"]; 
     }
     
     if (!shortcode || ![shortcode isKindOfClass:[NSString class]] || shortcode.length == 0) {
-        NSLog(@"[SCInsta] Web Fallback: Could not find shortcode for media.");
         if (completion) completion(nil);
         return;
     }
     
-    NSLog(@"[SCInsta] Web Fallback: Found shortcode: %@", shortcode);
     NSURL *webUrl = [NSURL URLWithString:[NSString stringWithFormat:@"https://www.instagram.com/p/%@/", shortcode]];
     
     NSURLSession *session = [NSURLSession sharedSession];
     [[session dataTaskWithURL:webUrl completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
         if (error || !data) {
-            NSLog(@"[SCInsta] Web Fallback: Request failed: %@", error);
             if (completion) completion(nil);
             return;
         }
@@ -361,32 +352,19 @@
              return;
         }
         
-        // Regex to find og:video
-        // <meta property="og:video" content="https://..." />
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"property=\"og:video\" content=\"([^\"]+)\"" options:0 error:nil];
         NSTextCheckingResult *match = [regex firstMatchInString:html options:0 range:NSMakeRange(0, html.length)];
         
         if (match && match.range.location != NSNotFound) {
             NSString *videoUrlString = [html substringWithRange:[match rangeAtIndex:1]];
-            
-            // Decode HTML entities if needed (usually not for og:video content but good practice)
-            // For now assume standard URL
-            
-            NSLog(@"[SCInsta] Web Fallback: Found video URL: %@", videoUrlString);
             if (completion) completion([NSURL URLWithString:videoUrlString]);
         } else {
-            NSLog(@"[SCInsta] Web Fallback: No og:video tag found.");
-            
-            // Try searching for "video_url" in JSON
             NSRegularExpression *jsonRegex = [NSRegularExpression regularExpressionWithPattern:@"\"video_url\":\"([^\"]+)\"" options:0 error:nil];
             NSTextCheckingResult *jsonMatch = [jsonRegex firstMatchInString:html options:0 range:NSMakeRange(0, html.length)];
             
             if (jsonMatch && jsonMatch.range.location != NSNotFound) {
                  NSString *jsonUrlString = [html substringWithRange:[jsonMatch rangeAtIndex:1]];
-                 // JSON URLs often have \u0026 instead of &
                  jsonUrlString = [jsonUrlString stringByReplacingOccurrencesOfString:@"\\u0026" withString:@"&"];
-                 
-                 NSLog(@"[SCInsta] Web Fallback: Found JSON video URL: %@", jsonUrlString);
                  if (completion) completion([NSURL URLWithString:jsonUrlString]);
             } else {
                  if (completion) completion(nil);
@@ -437,8 +415,8 @@
 
     return NO;
 }
-+ (BOOL)showConfirmation:(void(^)(void))okHandler {
-    UIAlertController* alert = [UIAlertController alertControllerWithTitle:nil message:@"Are you sure?" preferredStyle:UIAlertControllerStyleAlert];
++ (BOOL)showConfirmation:(void(^)(void))okHandler title:(NSString *)title {
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:title message:@"Are you sure?" preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Yes" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         okHandler();
     }]];
@@ -447,6 +425,36 @@
     [topMostController() presentViewController:alert animated:YES completion:nil];
 
     return nil;
+};
++ (BOOL)showConfirmation:(void(^)(void))okHandler cancelHandler:(void(^)(void))cancelHandler title:(NSString *)title {
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:nil message:@"Are you sure?" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Yes" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        okHandler();
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"No!" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        if (cancelHandler != nil) {
+            cancelHandler();
+        }
+    }]];
+
+    [topMostController() presentViewController:alert animated:YES completion:nil];
+
+    return nil;
+};
++ (BOOL)showConfirmation:(void(^)(void))okHandler {
+    return [self showConfirmation:okHandler title:nil];
+};
++ (BOOL)showConfirmation:(void(^)(void))okHandler cancelHandler:(void(^)(void))cancelHandler {
+    return [self showConfirmation:okHandler cancelHandler:cancelHandler title:nil];
+}
++ (void)showRestartConfirmation {
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Restart required" message:@"You must restart the app to apply this change" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Restart" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        exit(0);
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Later" style:UIAlertActionStyleCancel handler:nil]];
+
+    [topMostController() presentViewController:alert animated:YES completion:nil];
 };
 + (void)prepareAlertPopoverIfNeeded:(UIAlertController*)alert inView:(UIView*)view {
     if (alert.popoverPresentationController) {

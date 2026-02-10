@@ -2,22 +2,19 @@
 #import "InstagramHeaders.h"
 #import "Tweak.h"
 #import "Utils.h"
-#import "Manager.h"
-
-#import "Controllers/SecurityViewController.h"
-#import "Controllers/SettingsViewController.h"
+#import "Settings/SCISettingsViewController.h"
 
 ///////////////////////////////////////////////////////////
 
 // Screenshot handlers
 
-#define VOID_HANDLESCREENSHOT(orig) [SCIManager getBoolPref:@"remove_screenshot_alert"] ? nil : orig;
+#define VOID_HANDLESCREENSHOT(orig) [SCIUtils getBoolPref:@"remove_screenshot_alert"] ? nil : orig;
 #define NONVOID_HANDLESCREENSHOT(orig) return VOID_HANDLESCREENSHOT(orig)
 
 ///////////////////////////////////////////////////////////
 
 // * Tweak version *
-NSString *SCIVersionString = @"v0.8.1";
+NSString *SCIVersionString = @"v1.0.0";
 
 // Variables that work across features
 BOOL seenButtonEnabled = false;
@@ -25,9 +22,7 @@ BOOL dmVisualMsgsViewedButtonEnabled = false;
 
 // Tweak first-time setup
 %hook IGInstagramAppDelegate
-- (_Bool)application:(UIApplication *)application didFinishLaunchingWithOptions:(id)arg2 {
-    %orig;
-
+- (_Bool)application:(UIApplication *)application willFinishLaunchingWithOptions:(id)arg2 {
     // Default SCInsta config
     NSDictionary *sciDefaults = @{
         @"hide_ads": @(YES),
@@ -41,67 +36,63 @@ BOOL dmVisualMsgsViewedButtonEnabled = false;
         @"dw_story": @(YES),
         @"save_profile": @(YES),
         @"dw_finger_count": @(3),
-        @"dw_finger_duration": @(0.5)
+        @"dw_finger_duration": @(0.5),
+        @"reels_tap_control": @"default",
+        @"nav_icon_ordering": @"default",
+        @"swipe_nav_tabs": @"default",
+        @"enable_notes_customization": @(YES),
+        @"custom_note_themes": @(YES)
     };
     [[NSUserDefaults standardUserDefaults] registerDefaults:sciDefaults];
-
-    // Open settings for first-time users
-    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"SCInstaFirstRun"] == nil) {
-        NSLog(@"[SCInsta] First run, initializing");
-
-        // Display settings modal on screen
-        NSLog(@"[SCInsta] Displaying SCInsta first-time settings modal");
-        UIViewController *rootController = [[self window] rootViewController];
-        SCISettingsViewController *settingsViewController = [SCISettingsViewController new];
-        UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:settingsViewController];
-        
-        [rootController presentViewController:navigationController animated:YES completion:nil];
-
-        // Done with first-time setup
-        [[NSUserDefaults standardUserDefaults] setValue:@"SCInstaFirstRun" forKey:@"SCInstaFirstRun"];
-
+    
+    // Override instagram defaults
+    if ([SCIUtils getBoolPref:@"liquid_glass_buttons"]) {
+        [[NSUserDefaults standardUserDefaults] setValue:@(YES) forKey:@"instagram.override.project.lucent.navigation"];
+    }
+    else {
+        [[NSUserDefaults standardUserDefaults] setValue:@(NO) forKey:@"instagram.override.project.lucent.navigation"];
     }
 
-    NSLog(@"[SCInsta] Cleaning cache...");
-    [SCIManager cleanCache];
+    return %orig;
+}
+- (_Bool)application:(UIApplication *)application didFinishLaunchingWithOptions:(id)arg2 {
+    %orig;
 
-    [self authPrompt];
+    // Open settings for first-time users
+    double openDelay = [SCIUtils getBoolPref:@"tweak_settings_app_launch"] ? 0.0 : 5.0;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(openDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (
+            ![[[NSUserDefaults standardUserDefaults] objectForKey:@"SCInstaFirstRun"] isEqualToString:SCIVersionString]
+            || [SCIUtils getBoolPref:@"tweak_settings_app_launch"]
+        ) {
+            NSLog(@"[SCInsta] First run, initializing");
+
+            // Display settings modal on screen
+            NSLog(@"[SCInsta] Displaying SCInsta first-time settings modal");
+            UIViewController *rootController = [[self window] rootViewController];
+            SCISettingsViewController *settingsViewController = [SCISettingsViewController new];
+            UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:settingsViewController];
+
+            [rootController presentViewController:navigationController animated:YES completion:nil];
+        }
+    });
+
+    NSLog(@"[SCInsta] Cleaning cache...");
+    [SCIUtils cleanCache];
+
+    if ([SCIUtils getBoolPref:@"flex_app_launch"]) {
+        [[objc_getClass("FLEXManager") sharedManager] showExplorer];
+    }
 
     return true;
 }
 
-// Biometric/passcode authentication
-BOOL isAuthenticationBeingShown = NO;
-
-- (void)applicationDidEnterBackground:(id)arg1 {
-    %orig;
-
-    [self authPrompt];
-}
-- (void)applicationWillEnterForeground:(id)arg1 {
-    %orig;
-
-    [self authPrompt];
-}
 - (void)applicationDidBecomeActive:(id)arg1 {
     %orig;
     
-    if ([SCIManager getBoolPref:@"flex_app_start"]) {
+    if ([SCIUtils getBoolPref:@"flex_app_start"]) {
         [[objc_getClass("FLEXManager") sharedManager] showExplorer];
-    }
-}
-
-%new - (void)authPrompt {
-    // Padlock (biometric auth)
-    if ([SCIManager getBoolPref:@"padlock"] && !isAuthenticationBeingShown) {
-        UIViewController *rootController = [[self window] rootViewController];
-        SCISecurityViewController *securityViewController = [SCISecurityViewController new];
-        securityViewController.modalPresentationStyle = UIModalPresentationOverFullScreen;
-        [rootController presentViewController:securityViewController animated:NO completion:nil];
-
-        isAuthenticationBeingShown = YES;
-
-        NSLog(@"[SCInsta] Padlock authentication: App enabled");
     }
 }
 %end
@@ -145,7 +136,7 @@ shouldPersistLastBugReportId:(id)arg6
 
 %hook IGDirectVisualMessageScreenshotSafetyLogger
 - (id)initWithUserSession:(id)arg1 entryPoint:(NSInteger)arg2 {
-    if ([SCIManager getBoolPref:@"remove_screenshot_alert"]) {
+    if ([SCIUtils getBoolPref:@"remove_screenshot_alert"]) {
         NSLog(@"[SCInsta] Disable visual message screenshot safety logger");
         return nil;
     }
@@ -183,6 +174,10 @@ shouldPersistLastBugReportId:(id)arg6
 - (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
 %end
 
+/////////////////////////////////////////////////////////////////////////////
+
+// Hide items
+
 // Direct suggested chats (in search bar)
 %hook IGDirectInboxSearchListAdapterDataSource
 - (id)objectsForListAdapter:(id)arg1 {
@@ -196,8 +191,8 @@ shouldPersistLastBugReportId:(id)arg6
         if ([obj isKindOfClass:%c(IGLabelItemViewModel)]) {
 
             // Broadcast channels
-            if ([[obj uniqueIdentifier] isEqualToString:@"channels"]) {
-                if ([SCIManager getBoolPref:@"no_suggested_chats"]) {
+            if ([[obj valueForKey:@"uniqueIdentifier"] isEqualToString:@"channels"]) {
+                if ([SCIUtils getBoolPref:@"no_suggested_chats"]) {
                     NSLog(@"[SCInsta] Hiding suggested chats (header)");
 
                     shouldHide = YES;
@@ -205,8 +200,8 @@ shouldPersistLastBugReportId:(id)arg6
             }
 
             // Ask Meta AI
-            else if ([[obj labelTitle] isEqualToString:@"Ask Meta AI"]) {
-                if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+            else if ([[obj valueForKey:@"labelTitle"] isEqualToString:@"Ask Meta AI"]) {
+                if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                     NSLog(@"[SCInsta] Hiding meta ai suggested chats (header)");
 
                     shouldHide = YES;
@@ -214,8 +209,8 @@ shouldPersistLastBugReportId:(id)arg6
             }
 
             // AI
-            else if ([[obj labelTitle] isEqualToString:@"AI"]) {
-                if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+            else if ([[obj valueForKey:@"labelTitle"] isEqualToString:@"AI"]) {
+                if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                     NSLog(@"[SCInsta] Hiding ai suggested chats (header)");
 
                     shouldHide = YES;
@@ -231,7 +226,7 @@ shouldPersistLastBugReportId:(id)arg6
          || [obj isKindOfClass:%c(IGDirectInboxSearchAIAgentsSuggestedPromptLoggingViewModel)]
         ) {
 
-            if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+            if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                 NSLog(@"[SCInsta] Hiding suggested chats (ai agents)");
 
                 shouldHide = YES;
@@ -244,7 +239,7 @@ shouldPersistLastBugReportId:(id)arg6
 
             // Broadcast channels
             if ([[obj recipient] isBroadcastChannel]) {
-                if ([SCIManager getBoolPref:@"no_suggested_chats"]) {
+                if ([SCIUtils getBoolPref:@"no_suggested_chats"]) {
                     NSLog(@"[SCInsta] Hiding suggested chats (broadcast channels recipient)");
 
                     shouldHide = YES;
@@ -253,7 +248,7 @@ shouldPersistLastBugReportId:(id)arg6
             
             // Meta AI (special section types)
             else if (([obj sectionType] == 20) || [obj sectionType] == 18) {
-                if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+                if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                     NSLog(@"[SCInsta] Hiding meta ai suggested chats (meta ai recipient)");
 
                     shouldHide = YES;
@@ -262,7 +257,7 @@ shouldPersistLastBugReportId:(id)arg6
 
             // Meta AI (catch-all)
             else if ([[[obj recipient] threadName] isEqualToString:@"Meta AI"]) {
-                if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+                if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                     NSLog(@"[SCInsta] Hiding meta ai suggested chats (meta ai recipient)");
 
                     shouldHide = YES;
@@ -291,7 +286,7 @@ shouldPersistLastBugReportId:(id)arg6
         BOOL shouldHide = NO;
 
         // Meta AI suggested user in direct new message view
-        if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+        if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
             
             if ([obj isKindOfClass:%c(IGDirectCreateChatCellViewModel)]) {
 
@@ -318,7 +313,7 @@ shouldPersistLastBugReportId:(id)arg6
         }
 
         // Invite friends to insta contacts upsell
-        if ([SCIManager getBoolPref:@"no_suggested_users"]) {
+        if ([SCIUtils getBoolPref:@"no_suggested_users"]) {
             if ([obj isKindOfClass:%c(IGContactInvitesSearchUpsellViewModel)]) {
                 NSLog(@"[SCInsta] Hiding suggested users: invite contacts upsell");
 
@@ -336,6 +331,67 @@ shouldPersistLastBugReportId:(id)arg6
 }
 %end
 
+// Direct suggested chats (inbox view)
+%hook IGDirectInboxListAdapterDataSource
+- (id)objectsForListAdapter:(id)arg1 {
+    NSArray *originalObjs = %orig();
+    NSMutableArray *filteredObjs = [NSMutableArray arrayWithCapacity:[originalObjs count]];
+
+    for (id obj in originalObjs) {
+        BOOL shouldHide = NO;
+
+        // Section header
+        if ([obj isKindOfClass:%c(IGDirectInboxHeaderCellViewModel)]) {
+            
+            // "Suggestions" header
+            if ([[obj title] isEqualToString:@"Suggestions"]) {
+                if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
+                    NSLog(@"[SCInsta] Hiding suggested chats (header: messages tab)");
+
+                    shouldHide = YES;
+                }
+            }
+
+            // "Accounts to follow/message" header
+            else if ([[obj title] hasPrefix:@"Accounts to"]) {
+                if ([SCIUtils getBoolPref:@"no_suggested_users"]) {
+                    NSLog(@"[SCInsta] Hiding suggested users: (header: inbox view)");
+
+                    shouldHide = YES;
+                }
+            }
+
+        }
+
+        // Suggested recipients
+        else if ([obj isKindOfClass:%c(IGDirectInboxSuggestedThreadCellViewModel)]) {
+            if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
+                NSLog(@"[SCInsta] Hiding suggested chats (recipients: channels tab)");
+
+                shouldHide = YES;
+            }
+        }
+
+        // "Accounts to follow" recipients
+        else if ([obj isKindOfClass:%c(IGDiscoverPeopleItemConfiguration)] || [obj isKindOfClass:%c(IGDiscoverPeopleConnectionItemConfiguration)]) {
+            if ([SCIUtils getBoolPref:@"no_suggested_users"]) {
+                NSLog(@"[SCInsta] Hiding suggested chats: (recipients: inbox view)");
+
+                shouldHide = YES;
+            }
+        }
+
+        // Populate new objs array
+        if (!shouldHide) {
+            [filteredObjs addObject:obj];
+        }
+
+    }
+
+    return [filteredObjs copy];
+}
+%end
+
 // Explore page results
 %hook IGSearchListKitDataSource
 - (id)objectsForListAdapter:(id)arg1 {
@@ -346,13 +402,13 @@ shouldPersistLastBugReportId:(id)arg6
         BOOL shouldHide = NO;
 
         // Meta AI
-        if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+        if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
 
             // Section header 
             if ([obj isKindOfClass:%c(IGLabelItemViewModel)]) {
 
                 // "Ask Meta AI" search results header
-                if ([[obj labelTitle] isEqualToString:@"Ask Meta AI"]) {
+                if ([[obj valueForKey:@"labelTitle"] isEqualToString:@"Ask Meta AI"]) {
                     shouldHide = YES;
                 }
 
@@ -373,7 +429,7 @@ shouldPersistLastBugReportId:(id)arg6
 
                 // itemType 6 is meta ai suggestions
                 if ([obj itemType] == 6) {
-                    if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+                    if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                         shouldHide = YES;
                     }
                     
@@ -381,7 +437,7 @@ shouldPersistLastBugReportId:(id)arg6
 
                 // Meta AI user account in search results
                 else if ([[[obj title] string] isEqualToString:@"meta.ai"]) {
-                    if ([SCIManager getBoolPref:@"hide_meta_ai"]) {
+                    if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
                         shouldHide = YES;
                     }
                 }
@@ -391,13 +447,13 @@ shouldPersistLastBugReportId:(id)arg6
         }
 
         // No suggested users
-        if ([SCIManager getBoolPref:@"no_suggested_users"]) {
+        if ([SCIUtils getBoolPref:@"no_suggested_users"]) {
 
             // Section header 
             if ([obj isKindOfClass:%c(IGLabelItemViewModel)]) {
 
                 // "Suggested for you" search results header
-                if ([[obj labelTitle] isEqualToString:@"Suggested for you"]) {
+                if ([[obj valueForKey:@"labelTitle"] isEqualToString:@"Suggested for you"]) {
                     shouldHide = YES;
                 }
 
@@ -409,7 +465,7 @@ shouldPersistLastBugReportId:(id)arg6
             }
 
             // See all suggested users
-            else if ([obj isKindOfClass:%c(IGSeeAllItemConfiguration)]) {
+            else if ([obj isKindOfClass:%c(IGSeeAllItemConfiguration)] && ((IGSeeAllItemConfiguration *)obj).destination == 4) {
                 shouldHide = YES;
             }
 
@@ -423,6 +479,164 @@ shouldPersistLastBugReportId:(id)arg6
     }
 
     return [filteredObjs copy];
+}
+%end
+
+// Story tray
+%hook IGMainStoryTrayDataSource
+- (id)allItemsForTrayUsingCachedValue:(BOOL)cached {
+    NSArray *originalObjs = %orig(cached);
+    NSMutableArray *filteredObjs = [NSMutableArray arrayWithCapacity:[originalObjs count]];
+
+    for (IGStoryTrayViewModel *obj in originalObjs) {
+        BOOL shouldHide = NO;
+
+        if ([SCIUtils getBoolPref:@"no_suggested_users"]) {
+            // This hides as many recommended models as possible, without hiding genuine models
+            // Most recommended models share a 32 digit id, unlike normal accounts
+            if ([obj isKindOfClass:%c(IGStoryTrayViewModel)] && [obj.pk length] == 32) {
+                NSLog(@"[SCInsta] Hiding suggested users: story tray");
+
+                shouldHide = YES;
+            }
+        }
+
+        if ([SCIUtils getBoolPref:@"hide_ads"]) {
+            // "New!" account id is 3538572169
+            if ([obj isKindOfClass:%c(IGStoryTrayViewModel)] && (obj.isUnseenNux == YES || [obj.pk isEqualToString:@"3538572169"])) {
+                NSLog(@"[SCInsta] Removing ads: story tray");
+
+                shouldHide = YES;
+            }
+        }
+
+        // Populate new objs array
+        if (!shouldHide) {
+            [filteredObjs addObject:obj];
+        }
+    }
+
+    return [filteredObjs copy];
+}
+%end
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Confirm buttons
+
+/*
+* Long press alerts can be triggered continuously by holding down on the button
+*
+* Instead, you call the "_didTap" method from the "_didLongPress" method
+* Then, in the "_didTap" method, you make sure the confirm alert is only shown once
+*/
+
+static BOOL showingFeedItemUFIConfirm = NO;
+static BOOL showingVerticalUFIConfirm = NO;
+
+%hook IGFeedItemUFICell
+- (void)UFIButtonBarDidTapOnLike:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"like_confirm"]) {
+        NSLog(@"[SCInsta] Confirm post like triggered");
+
+        [SCIUtils showConfirmation:^(void) { %orig; }];
+    }
+    else {
+        return %orig;
+    }  
+}
+
+- (void)UFIButtonBarDidTapOnRepost:(id)arg1 {
+    if (showingFeedItemUFIConfirm) return;
+
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered");
+
+        showingFeedItemUFIConfirm = YES;
+
+        [SCIUtils showConfirmation:^(void) { %orig; showingFeedItemUFIConfirm = NO; }
+                     cancelHandler:^(void) { showingFeedItemUFIConfirm = NO; }];
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)UFIButtonBarDidLongPressOnRepost:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered (long press hack)");
+
+        [self UFIButtonBarDidTapOnRepost:nil];
+    }
+    else {
+        return %orig;
+    }
+}
+- (void)UFIButtonBarDidLongPressOnRepost:(id)arg1 withGestureRecognizer:(id)arg2 {
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered (long press hack)");
+
+        [self UFIButtonBarDidTapOnRepost:nil];
+    }
+    else {
+        return %orig;
+    }
+}
+%end
+
+%hook IGSundialViewerVerticalUFI
+- (void)_didTapLikeButton:(id)arg1 {
+    if (showingVerticalUFIConfirm) return;
+
+    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
+        NSLog(@"[SCInsta] Confirm reels like triggered");
+
+        showingVerticalUFIConfirm = YES;
+
+        [SCIUtils showConfirmation:^(void) { %orig; showingVerticalUFIConfirm = NO; }
+                     cancelHandler:^(void) { showingVerticalUFIConfirm = NO; }];
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)_didLongPressLikeButton:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
+        NSLog(@"[SCInsta] Confirm reels like triggered (long press hack)");
+
+        [self _didTapLikeButton:nil];
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)_didTapRepostButton:(id)arg1 {
+    if (showingVerticalUFIConfirm) return;
+
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered");
+
+        showingVerticalUFIConfirm = YES;
+
+        [SCIUtils showConfirmation:^(void) { %orig; showingVerticalUFIConfirm = NO; }
+                     cancelHandler:^(void) { showingVerticalUFIConfirm = NO; }];
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)_didLongPressRepostButton:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered (long press hack)");
+
+        [self _didTapRepostButton:nil];
+    }
+    else {
+        return %orig;
+    }
 }
 %end
 
@@ -440,45 +654,26 @@ shouldPersistLastBugReportId:(id)arg6
     [self.view addGestureRecognizer:longPress];
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
-    if (sender.state == UIGestureRecognizerStateBegan) {
-        if ([SCIManager getBoolPref:@"flex_instagram"]) {
-            [[objc_getClass("FLEXManager") sharedManager] showExplorer];
-        }
+    if (sender.state != UIGestureRecognizerStateBegan) return;
+
+    if ([SCIUtils getBoolPref:@"flex_instagram"]) {
+        [[objc_getClass("FLEXManager") sharedManager] showExplorer];
     }
 }
 %end
 
 // Disable safe mode (defaults reset upon subsequent crashes)
 %hook IGSafeModeChecker
+- (id)initWithInstacrashCounterProvider:(void *)provider crashThreshold:(unsigned long long)threshold {
+    if ([SCIUtils getBoolPref:@"disable_safe_mode"]) return nil;
+
+    return %orig(provider, threshold);
+}
 - (unsigned long long)crashCount {
-    if ([SCIManager getBoolPref:@"disable_safe_mode"]) {
+    if ([SCIUtils getBoolPref:@"disable_safe_mode"]) {
         return 0;
     }
 
     return %orig;
-}
-%end
-
-/////////////////////////////////////////////////////////////////////////////
-
-%hook HBLinkTableCell
-- (void)viewDidLoad {
-    %orig;
-
-    UILabel *titleLabel = [self titleLabel];
-    [titleLabel setTextColor:[SCIUtils SCIColour_Primary]];
-}
-- (void)loadIconIfNeeded {
-    if ([[self.specifier propertyForKey:@"iconTransparentBG"] isEqual:@(YES)]) {
-        self.iconView.backgroundColor = [UIColor clearColor];
-    }
-
-    %orig;
-}
-%end
-
-%hook HBForceCepheiPrefs
-+ (BOOL)forceCepheiPrefsWhichIReallyNeedToAccessAndIKnowWhatImDoingISwear {
-    return YES;
 }
 %end

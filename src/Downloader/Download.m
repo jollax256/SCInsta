@@ -21,9 +21,6 @@
     // Show progress gui
     self.hud = [[JGProgressHUD alloc] init];
     self.hud.textLabel.text = hudLabel != nil ? hudLabel : @"Downloading";
-    
-    // Allow user to interact with app while downloading (Background Download)
-    self.hud.interactionType = JGProgressHUDInteractionTypeBlockNoTouches;
 
     if (self.showProgress) {
         JGProgressHUDRingIndicatorView *indicatorView = [[JGProgressHUDRingIndicatorView alloc] init ];
@@ -36,16 +33,7 @@
         // Allow dismissing longer downloads (requiring progress updates)
         __weak typeof(self) weakSelf = self;
         self.hud.tapOutsideBlock = ^(JGProgressHUD * _Nonnull HUD) {
-            // Optional: Ask for confirmation before cancelling?
-            // For now, simple tap won't mistakenly cancel since touches pass through.
-            // But if they tap ON the HUD it might trigger.
-            // Actually with BlockNoTouches, tapOutsideBlock might not trigger as expected on the window.
-            // Let's rely on explicit cancel or completed.
-        };
-        
-        // Allow tap on HUD to cancel
-        self.hud.tapOnHUDViewBlock = ^(JGProgressHUD * _Nonnull HUD) {
-             [weakSelf.downloadManager cancelDownload];
+            [weakSelf.downloadManager cancelDownload];
         };
     }
 
@@ -96,11 +84,11 @@
 
         switch (self.action) {
             case share:
-                [SCIManager showShareVC:fileURL];
+                [SCIUtils showShareVC:fileURL];
                 break;
             
             case quickLook:
-                [SCIManager showQuickLookVC:@[fileURL]];
+                [SCIUtils showQuickLookVC:@[fileURL]];
                 break;
         }
     });

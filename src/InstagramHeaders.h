@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#include <objc/NSObject.h>
 #import <UIKit/UIKit.h>
 #import "../modules/JGProgressHUD/JGProgressHUD.h"
 
@@ -35,6 +36,9 @@
 @interface IGTabBar: UIView
 @end
 
+@interface IGTabBarController : UIViewController
+@end
+
 @interface IGTableViewCell: UITableViewCell
 - (id)initWithReuseIdentifier:(NSString *)identifier;
 @end
@@ -54,38 +58,24 @@
 @property(readonly, nonatomic) NSURL *url;
 @end
 
-// IGImageURL - used in _originalImageVersions array
-@interface IGImageURL : NSObject
-@property(readonly, nonatomic) NSURL *url;
-@property(readonly, nonatomic) CGFloat width;
-@property(readonly, nonatomic) CGFloat height;
+@interface IGVideo : NSObject
+- (id)sortedVideoURLsBySize; // Before Instagram v398
+- (id)allVideoURLs; // After Instagram v398
 @end
 
-@interface IGVideo : NSObject {
-    NSSet *_allVideoURLs;
-    NSArray *_videoVersionDictionaries;
-}
-@property(readonly, nonatomic) NSSet *allVideoURLs;
-- (id)sortedVideoURLsBySize;
-@end
-
-@interface IGPhoto : NSObject {
-    NSArray *_originalImageVersions; // Array of IGImageURL
-}
+@interface IGPhoto : NSObject
 - (id)imageURLForWidth:(CGFloat)width;
 @end
 
 @interface IGMedia : NSObject
+@property(nonatomic, readonly) BOOL isOrganicMedia;
 @property(readonly) IGVideo *video;
 @property(readonly) IGPhoto *photo;
-@property(readonly, strong) NSArray *items; // Array of IGPostItem for carousels
-- (BOOL)isPhotoMedia;
 @end
 
 @interface IGPostItem : NSObject
 @property(readonly) IGVideo *video;
 @property(readonly) IGPhoto *photo;
-@property(readonly, nonatomic) NSInteger mediaType; // 1: photo, 2: video
 @end
 
 @interface IGPageMediaView : UIView
@@ -173,6 +163,12 @@
 - (void)addLongPressGestureRecognizer; // new
 @end
 
+@interface IGStoryModernVideoView : UIView
+@property (nonatomic, readonly) IGMedia *item;
+
+- (void)addLongPressGestureRecognizer; // new
+@end
+
 @interface IGStoryFullscreenOverlayView : UIView
 @property (nonatomic, weak, readwrite) id gestureDelegate;
 - (id)gestureDelegate;
@@ -223,7 +219,6 @@
 @end
 
 @interface IGInstagramAppDelegate : NSObject <UIApplicationDelegate>
-- (void)authPrompt; // new
 @end
 
 @interface IGDirectInboxSearchAIAgentsPillsContainerCell : UIView
@@ -270,6 +265,12 @@
 @end
 
 @interface IGImageWithAccessoryButton : IGTapButton
+- (void)addLongPressGestureRecognizer; // new
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gr; // new
+@end
+
+@interface IGHomeFeedHeaderViewController
+- (void)headerDidLongPressLogo:(id)arg1;
 @end
 
 @interface IGSearchBarDonutButton : UIView
@@ -331,19 +332,21 @@
 @interface IGStoryEyedropperToggleButton : UIControl
 @property (nonatomic, strong, readwrite) UIColor *color;
 
-- (void)setSelected:(BOOL)selected animated:(BOOL)animated;
+- (void)setPushedDown:(BOOL)pushedDown;
 
 - (void)addLongPressGestureRecognizer; // new
 @end
 
 @interface IGStoryTextEntryViewController : UIViewController
-- (void)textViewControllerDidUpdateWithColor:(id)color;
+- (void)textViewControllerDidUpdateWithColor:(id)color colorSource:(NSInteger)source;
 @end
 
 @interface IGStoryColorPaletteView : UIView
 @end
 
 @interface IGProfilePictureImageView : UIView
+@property (nonatomic, readonly) IGUser *userGQL;
+
 - (void)addLongPressGestureRecognizer; // new
 @end
 
@@ -366,6 +369,77 @@
 
 @interface _TtC27IGGalleryDestinationToolbar31IGGalleryDestinationToolbarView : UIView
 @property(nonatomic, copy, readwrite) NSArray *tools;
+@end
+
+@interface IGSundialViewerVerticalUFI : UIView
+- (void)_didTapLikeButton:(id)arg1;
+- (void)_didTapRepostButton:(id)arg1;
+@end
+
+@interface IGMainAppSurfaceIntent : NSObject
+- (id)tabStringFromSurfaceIntent;
+@end
+
+@interface IGSundialFeedViewController : UIViewController
+- (void)refreshControlDidEndFinishLoadingAnimation:(id)arg1;
+@end
+
+@interface IGRefreshControl : UIControl
+@end
+
+@interface IGDirectThreadViewDrawingViewController : UIViewController
+- (void)drawingControls:controls didSelectColor:color;
+@end
+
+@interface IGSundialViewerNavigationBarOld : UIView
+@end
+
+@interface IGFeedItemUFICell : UIView
+- (void)UFIButtonBarDidTapOnRepost:(id)arg1;
+@end
+
+@interface IGNotesCreationFeatureSupportModel : NSObject
+@end
+
+@interface IGNotesCustomThemeCreationModel : NSObject
++ (id)defaultModelForExpressiveEmojiType:(id)arg1;
+@end
+
+@interface IGDirectNotesComposerViewController : UIViewController
+- (void)notesBubbleEditorViewControllerDidUpdateWithCustomThemeCreationModel:(id)model;
+@end
+
+@interface _TtC20IGDirectNotesUISwift41IGDirectNotesBubbleEditorColorPaletteView : UIView
+@property (nonatomic, copy) UIColor *backgroundColor; // new
+@property (nonatomic, copy) UIColor *textColor; // new
+@property (nonatomic, copy) NSString *emojiText; // new
+
+- (void)presentColorPicker:(NSString *)target; // new
+- (void)applySCICustomTheme:(NSString *)target; // new
+@end
+
+@interface _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController : UIViewController
+@property (nonatomic) IGDirectNotesComposerViewController *delegate;
+@end
+
+@interface IGDSBottomButtonsView : UIView
+- (void)setPrimaryButtonEnabled:(BOOL)enabled;
+- (void)setSecondaryButtonEnabled:(BOOL)enabled;
+@end
+
+@interface IGStoryTrayViewModel : NSObject
+@property (nonatomic, readonly) NSString *pk;
+@property (nonatomic, readonly) BOOL isUnseenNux;
+@end
+
+@interface _TtC32IGSundialOrganicCTAContainerView32IGSundialOrganicCTAContainerView : UIView
+@end
+
+@interface IGCommentThreadViewController : UIViewController
+@end
+
+@interface IGSeeAllItemConfiguration : NSObject
+@property (readonly, nonatomic) long long destination;
 @end
 
 
