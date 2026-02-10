@@ -102,15 +102,30 @@ static void initDownloaders () {
             videoUrl = [SCIUtils getCachedVideoUrlForView:self];
         }
 
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from post"];
-            return;
+        if (videoUrl) {
+             initDownloaders();
+             [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                          fileExtension:@"mp4"
+                                               hudLabel:nil];
+             return;
         }
+        
+        // 3. Try Web Fallback
+        [SCIUtils requestWebVideoUrlForMedia:[self mediaCellFeedItem] completion:^(NSURL *url) {
+             if (url) {
+                 dispatch_async(dispatch_get_main_queue(), ^{
+                     initDownloaders();
+                     [videoDownloadDelegate downloadFileWithURL:url
+                                                  fileExtension:@"mp4"
+                                                       hudLabel:nil];
+                 });
+             } else {
+                 dispatch_async(dispatch_get_main_queue(), ^{
+                     [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL"];
+                 });
+             }
+        }];
 
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:@"mp4"
-                                          hudLabel:nil];
     } @catch (NSException *exception) {
         NSLog(@"[SCInsta] Crash in Feed video download: %@", exception);
         [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
@@ -281,12 +296,13 @@ static void initDownloaders () {
 
     @try {
         NSURL *videoUrl = nil;
+        IGMedia *media = nil;
 
         // 1. Try Primary Extraction via captionDelegate (same pattern as Reels self.video)
         if ([self respondsToSelector:@selector(captionDelegate)]) {
             IGStoryFullscreenSectionController *controller = self.captionDelegate;
             if (controller && [controller respondsToSelector:@selector(currentStoryItem)]) {
-                IGMedia *media = controller.currentStoryItem;
+                media = controller.currentStoryItem;
                 if (media) {
                     videoUrl = [SCIUtils getVideoUrlForMedia:media];
                 }
@@ -306,15 +322,36 @@ static void initDownloaders () {
             }
         }
 
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from story"];
-            return;
+        if (videoUrl) {
+             initDownloaders();
+             [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                          fileExtension:@"mp4"
+                                               hudLabel:nil];
+             return;
         }
 
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:@"mp4"
-                                          hudLabel:nil];
+        // 4. Try Web Fallback (Last Resort)
+        // Note: Stories might not have a public web URL easily, but we can try if we have the media object
+        if (media) {
+             [SCIUtils requestWebVideoUrlForMedia:media completion:^(NSURL *url) {
+                 if (url) {
+                     dispatch_async(dispatch_get_main_queue(), ^{
+                         initDownloaders();
+                         [videoDownloadDelegate downloadFileWithURL:url
+                                                      fileExtension:@"mp4"
+                                                           hudLabel:nil];
+                     });
+                 } else {
+                     dispatch_async(dispatch_get_main_queue(), ^{
+                         [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from story"];
+                     });
+                 }
+             }];
+             return;
+        }
+
+        [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from story"];
+
     } @catch (NSException *exception) {
         NSLog(@"[SCInsta] Crash in Story download: %@", exception);
         [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
