@@ -86,7 +86,7 @@ static void initDownloaders () {
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIManager getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = 2; // 2 fingers for feed videos
+    longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
@@ -94,26 +94,22 @@ static void initDownloaders () {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
-        // Use the same simple cache-based approach that works for Reels
-        NSURL *videoUrl = [SCIUtils getCachedVideoUrlForView:self];
+        // 1. Try Primary Extraction (same as Reels)
+        NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
         
-        // If not found in direct subviews, search parent controller's view hierarchy
+        // 2. Try Cache Fallback if primary failed
         if (!videoUrl) {
-            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-            if (parentVC) {
-                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-            }
+            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
         }
 
         if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from post"];
             return;
         }
 
-        // Download video & show in share menu
         initDownloaders();
         [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                     fileExtension:@"mp4"
                                           hudLabel:nil];
     } @catch (NSException *exception) {
         NSLog(@"[SCInsta] Crash in Feed video download: %@", exception);
@@ -276,7 +272,7 @@ static void initDownloaders () {
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIManager getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = 3; // 3 fingers for story videos (2 fingers pauses)
+    longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
@@ -284,10 +280,25 @@ static void initDownloaders () {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
-        // Use the same simple cache-based approach that works for Reels
-        NSURL *videoUrl = [SCIUtils getCachedVideoUrlForView:self];
-        
-        // If not found in direct subviews, search parent controller's view hierarchy
+        NSURL *videoUrl = nil;
+
+        // 1. Try Primary Extraction via captionDelegate (same pattern as Reels self.video)
+        if ([self respondsToSelector:@selector(captionDelegate)]) {
+            IGStoryFullscreenSectionController *controller = self.captionDelegate;
+            if (controller && [controller respondsToSelector:@selector(currentStoryItem)]) {
+                IGMedia *media = controller.currentStoryItem;
+                if (media) {
+                    videoUrl = [SCIUtils getVideoUrlForMedia:media];
+                }
+            }
+        }
+
+        // 2. Try Cache Fallback if primary failed (same as Reels)
+        if (!videoUrl) {
+            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
+        }
+
+        // 3. Search parent controller's view hierarchy
         if (!videoUrl) {
             UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
             if (parentVC) {
