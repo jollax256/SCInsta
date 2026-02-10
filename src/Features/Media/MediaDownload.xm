@@ -102,31 +102,41 @@ static void initDownloaders () {
             NSLog(@"[SCInsta] Feed video model extraction failed: %@", e);
         }
 
-        // 2. Fallback: search own view hierarchy for AVPlayer
+        // 2. Fallback: search view hierarchy for AVPlayer URL
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Feed video: Model extraction returned nil, trying cache on self...");
             videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
         }
-
-        // 3. Fallback: search parent controller's entire view hierarchy
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Feed video: Cache on self returned nil, trying parent controller...");
             UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
-            if (parentVC) {
-                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-            }
+            if (parentVC) videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
         }
 
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+        if (videoUrl) {
+            // Download via URL
+            initDownloaders();
+            [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                         fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                              hudLabel:nil];
             return;
         }
 
-        // Download video & show in share menu
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                          hudLabel:nil];
+        // 3. Final fallback: export cached media directly
+        NSLog(@"[SCInsta] Feed video: All URL methods failed, trying cached media export...");
+        JGProgressHUD *hud = [[JGProgressHUD alloc] init];
+        hud.textLabel.text = @"Saving video...";
+        [hud showInView:topMostController().view];
+
+        [SCIUtils exportCachedVideoFromView:(UIView *)self completion:^(NSURL *fileURL, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [hud dismiss];
+                if (fileURL && !error) {
+                    [SCIUtils showShareVC:fileURL];
+                } else {
+                    NSLog(@"[SCInsta] Feed video export failed: %@", error);
+                    [SCIUtils showErrorHUDWithDescription:@"Could not extract video from post"];
+                }
+            });
+        }];
     }
     @catch (NSException *exception) {
         NSLog(@"[SCInsta] Feed video download exception: %@", exception);
@@ -211,31 +221,40 @@ static void initDownloaders () {
             NSLog(@"[SCInsta] Reel video model extraction failed: %@", e);
         }
 
-        // 2. Fallback: search own view hierarchy for AVPlayer
+        // 2. Fallback: search view hierarchy for AVPlayer URL
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Reel video: Model extraction returned nil, trying cache on self...");
             videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
         }
-
-        // 3. Fallback: search parent controller's entire view hierarchy
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Reel video: Cache on self returned nil, trying parent controller...");
             UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
-            if (parentVC) {
-                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-            }
+            if (parentVC) videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
         }
 
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from reel"];
+        if (videoUrl) {
+            initDownloaders();
+            [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                         fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                              hudLabel:nil];
             return;
         }
 
-        // Download video & show in share menu
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                          hudLabel:nil];
+        // 3. Final fallback: export cached media directly
+        NSLog(@"[SCInsta] Reel video: All URL methods failed, trying cached media export...");
+        JGProgressHUD *hud = [[JGProgressHUD alloc] init];
+        hud.textLabel.text = @"Saving video...";
+        [hud showInView:topMostController().view];
+
+        [SCIUtils exportCachedVideoFromView:(UIView *)self completion:^(NSURL *fileURL, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [hud dismiss];
+                if (fileURL && !error) {
+                    [SCIUtils showShareVC:fileURL];
+                } else {
+                    NSLog(@"[SCInsta] Reel video export failed: %@", error);
+                    [SCIUtils showErrorHUDWithDescription:@"Could not extract video from reel"];
+                }
+            });
+        }];
     }
     @catch (NSException *exception) {
         NSLog(@"[SCInsta] Reel video download exception: %@", exception);
@@ -318,31 +337,40 @@ static void initDownloaders () {
             NSLog(@"[SCInsta] Story modern video model extraction failed: %@", e);
         }
 
-        // 2. Fallback: search own view hierarchy for AVPlayer
+        // 2. Fallback: search view hierarchy for AVPlayer URL
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Story modern video: Model extraction returned nil, trying cache on self...");
             videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
         }
-
-        // 3. Fallback: search parent controller's entire view hierarchy
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Story modern video: Cache on self returned nil, trying parent controller...");
             UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
-            if (parentVC) {
-                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-            }
+            if (parentVC) videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
         }
 
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+        if (videoUrl) {
+            initDownloaders();
+            [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                         fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                              hudLabel:nil];
             return;
         }
 
-        // Download video & show in share menu
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:[[videoUrl lastPathComponent] pathExtension]
-                                          hudLabel:nil];
+        // 3. Final fallback: export cached media directly
+        NSLog(@"[SCInsta] Story modern video: All URL methods failed, trying cached media export...");
+        JGProgressHUD *hud = [[JGProgressHUD alloc] init];
+        hud.textLabel.text = @"Saving video...";
+        [hud showInView:topMostController().view];
+
+        [SCIUtils exportCachedVideoFromView:(UIView *)self completion:^(NSURL *fileURL, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [hud dismiss];
+                if (fileURL && !error) {
+                    [SCIUtils showShareVC:fileURL];
+                } else {
+                    NSLog(@"[SCInsta] Story modern video export failed: %@", error);
+                    [SCIUtils showErrorHUDWithDescription:@"Could not extract video from story"];
+                }
+            });
+        }];
     }
     @catch (NSException *exception) {
         NSLog(@"[SCInsta] Story modern video download exception: %@", exception);
