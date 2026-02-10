@@ -94,20 +94,14 @@ static void initDownloaders () {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
-        // 1. Try Primary Extraction
-        NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
+        // Use the same simple cache-based approach that works for Reels
+        NSURL *videoUrl = [SCIUtils getCachedVideoUrlForView:self];
         
-        // 2. Try Cache Fallback (Reels Style)
+        // If not found in direct subviews, search parent controller's view hierarchy
         if (!videoUrl) {
-            NSLog(@"[SCInsta] Primary extraction failed for feed video. Trying cache...");
-            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
-            
-            if (!videoUrl) {
-                // Search parent controller's view hierarchy
-                UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-                if (parentVC) {
-                    videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-                }
+            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+            if (parentVC) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
             }
         }
 
@@ -290,92 +284,15 @@ static void initDownloaders () {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
-        NSURL *videoUrl = nil;
-
-        // Try to get video URL from story item
-        // Try to get video URL from story item via Controller Traversal
-        NSLog(@"[SCInsta] Starting Story Download Logic on view: %@", [self class]);
+        // Use the same simple cache-based approach that works for Reels
+        NSURL *videoUrl = [SCIUtils getCachedVideoUrlForView:self];
         
-        UIResponder *responder = self;
-        int depth = 0;
-        while (responder) {
-            NSLog(@"[SCInsta] Responder Chain [%d]: %@", depth, [responder class]);
-            
-            if ([responder isKindOfClass:%c(IGStoryFullscreenSectionController)]) {
-                NSLog(@"[SCInsta] Found IGStoryFullscreenSectionController!");
-                IGStoryFullscreenSectionController *controller = (IGStoryFullscreenSectionController *)responder;
-                
-                if ([controller respondsToSelector:@selector(currentStoryItem)]) {
-                    IGMedia *media = controller.currentStoryItem;
-                    NSLog(@"[SCInsta] currentStoryItem result: %@", media);
-                    
-                    if (media) {
-                        videoUrl = [SCIUtils getVideoUrlForMedia:media];
-                        NSLog(@"[SCInsta] URL from media: %@", videoUrl);
-                    } else {
-                        NSLog(@"[SCInsta] Error: currentStoryItem is nil");
-                    }
-                } else {
-                     NSLog(@"[SCInsta] Error: Controller does not respond to currentStoryItem");
-                }
-                break;
-            }
-            responder = [responder nextResponder];
-            depth++;
-            if (depth > 50) break; // Safety break
-        }
-
-        // Keep captionDelegate as a backup if traversal fails
-        if (!videoUrl && [self respondsToSelector:@selector(captionDelegate)]) {
-            IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
-            if (captionDelegate && [captionDelegate respondsToSelector:@selector(currentStoryItem)]) {
-                IGMedia *media = captionDelegate.currentStoryItem;
-                if (media) {
-                    videoUrl = [SCIUtils getVideoUrlForMedia:media];
-                }
-            }
-        }
-        
-        // Fallback: Direct messages video player
+        // If not found in direct subviews, search parent controller's view hierarchy
         if (!videoUrl) {
-            id parentVC = [SCIUtils nearestViewControllerForView:self];
-            if (parentVC && [parentVC isKindOfClass:%c(IGDirectVisualMessageViewerController)]) {
-                IGDirectVisualMessageViewerViewModeAwareDataSource *_dataSource = MSHookIvar<IGDirectVisualMessageViewerViewModeAwareDataSource *>(parentVC, "_dataSource");
-                if (_dataSource) {
-                    IGDirectVisualMessage *_currentMessage = MSHookIvar<IGDirectVisualMessage *>(_dataSource, "_currentMessage");
-                    if (_currentMessage && [_currentMessage respondsToSelector:@selector(rawVideo)]) {
-                        IGVideo *rawVideo = _currentMessage.rawVideo;
-                        if (rawVideo) {
-                            videoUrl = [SCIUtils getVideoUrl:rawVideo];
-                        }
-                    }
-                }
+            UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+            if (parentVC) {
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
             }
-        }
-
-        // 3. Fallback: Aggressive Cache Search (Reels Style)
-        if (!videoUrl) {
-            // Check direct subviews first (fastest)
-            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
-            
-            if (!videoUrl) {
-                // Check parent controller's entire view hierarchy (most robust)
-                UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-                if (parentVC) {
-                    NSLog(@"[SCInsta] Primary failed. Searching parent VC view: %@", [parentVC class]);
-                    videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-                }
-            }
-        }
-
-        if (!videoUrl) {
-             // Last ditch: Direct property check on the view itself
-             if ([self respondsToSelector:@selector(item)]) {
-                 id item = [self performSelector:@selector(item)];
-                 if (item && [item isKindOfClass:%c(IGMedia)]) {
-                      videoUrl = [SCIUtils getVideoUrlForMedia:item];
-                 }
-             }
         }
 
         if (!videoUrl) {
