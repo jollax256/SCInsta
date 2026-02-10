@@ -92,7 +92,8 @@ static void initDownloaders () {
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.video];
+    IGModernFeedVideoCell *cell = (IGModernFeedVideoCell *)self;
+    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:cell.video];
     if (!videoUrl) {
         [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
 
