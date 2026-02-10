@@ -180,8 +180,9 @@ static char rowStaticRef[] = "row";
             menuButton.titleLabel.font = [UIFont systemFontOfSize:[UIFont preferredFontForTextStyle:UIFontTextStyleBody].pointSize
                                                            weight:UIFontWeightMedium];
             
-            // Use legacy API for iOS 14.5 SDK compatibility
-            menuButton.contentEdgeInsets = UIEdgeInsetsMake(8, 8, 8, 8);
+            UIButtonConfiguration *config = menuButton.configuration ?: [UIButtonConfiguration plainButtonConfiguration];
+            menuButton.configuration.contentInsets = NSDirectionalEdgeInsetsMake(8, 8, 8, 8);
+            menuButton.configuration = config;
 
             [menuButton sizeToFit];
             
@@ -271,23 +272,7 @@ static char rowStaticRef[] = "row";
     
     NSLog(@"Menu changed: %@", command.propertyList[@"value"]);
     
-    // Find and reload the cell for this key
-    NSString *changedKey = properties[@"defaultsKey"];
-    if (changedKey) {
-        NSInteger sIndex = 0;
-        for (NSDictionary *section in self.sections) {
-            NSInteger rIndex = 0;
-            for (SCISetting *row in section[@"rows"]) {
-                if ([row.defaultsKey isEqualToString:changedKey]) {
-                    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:rIndex inSection:sIndex];
-                    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-                    break;
-                }
-                rIndex++;
-            }
-            sIndex++;
-        }
-    }
+    [self reloadCellForView:command.sender animated:YES];
     
     if (properties[@"requiresRestart"]) {
         [SCIUtils showRestartConfirmation];

@@ -35,7 +35,6 @@
 
 // Colours
 + (UIColor *)SCIColor_Primary;
-+ (UIColor *)SCIColour_Primary; // Legacy alias
 
 // Errors
 + (NSError *)errorWithDescription:(NSString *)errorDesc;
@@ -45,14 +44,11 @@
 + (JGProgressHUD *)showErrorHUDWithDescription:(NSString *)errorDesc dismissAfterDelay:(CGFloat)dismissDelay;
 
 // Media
-+ (NSURL *)getPhotoUrl:(IGPhoto *)photo; // Legacy Robust
-+ (NSURL *)getPhotoUrlForMedia:(IGMedia *)media; // Legacy Robust
++ (NSURL *)getPhotoUrl:(IGPhoto *)photo;
++ (NSURL *)getPhotoUrlForMedia:(IGMedia *)media;
 
-+ (NSURL *)getVideoUrl:(IGVideo *)video; // Legacy Robust
-+ (NSURL *)getVideoUrlForMedia:(IGMedia *)media; // Legacy Robust
-
-+ (void)requestWebVideoUrlForMedia:(IGMedia *)media completion:(void(^)(NSURL *url))completion; // Legacy Fallback
-+ (NSURL *)getCachedVideoUrlForView:(UIView *)view; // Legacy Fallback
++ (NSURL *)getVideoUrl:(IGVideo *)video;
++ (NSURL *)getVideoUrlForMedia:(IGMedia *)media;
 
 // View Controllers
 + (UIViewController *)viewControllerForView:(UIView *)view;

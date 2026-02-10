@@ -16,7 +16,7 @@ static void initDownloaders () {
 
 /* * Feed * */
 
-// Download feed images (Legacy Implementation for High Res Support)
+// Download feed images
 %hook IGFeedPhotoView
 - (void)didMoveToSuperview {
     %orig;
@@ -42,7 +42,6 @@ static void initDownloaders () {
     // Get photo instance
     IGPhoto *photo;
 
-    // Legacy Logic: Check specifically for IGFeedItemPhotoCell and IGFeedItemPagePhotoCell
     if ([self.delegate isKindOfClass:%c(IGFeedItemPhotoCell)]) {
         IGFeedItemPhotoCellConfiguration *_configuration = MSHookIvar<IGFeedItemPhotoCellConfiguration *>(self.delegate, "_configuration");
         if (!_configuration) return;
@@ -70,7 +69,7 @@ static void initDownloaders () {
 }
 %end
 
-// Download feed videos (New Implementation)
+// Download feed videos
 %hook IGModernFeedVideoCell.IGModernFeedVideoCell
 - (void)didMoveToSuperview {
     %orig;
@@ -111,7 +110,7 @@ static void initDownloaders () {
 
 /* * Reels * */
 
-// Download reels (photos) (Legacy Implementation)
+// Download reels (photos)
 %hook IGSundialViewerPhotoView
 - (void)didMoveToSuperview {
     %orig;
@@ -151,7 +150,7 @@ static void initDownloaders () {
 }
 %end
 
-// Download reels (videos) (Legacy Implementation)
+// Download reels (videos)
 %hook IGSundialViewerVideoCell
 - (void)didMoveToSuperview {
     %orig;
@@ -174,41 +173,25 @@ static void initDownloaders () {
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
     
-    @try {
-        if (![self respondsToSelector:@selector(video)]) {
-            [SCIUtils showErrorHUDWithDescription:@"Error: Reel media not found"];
-            return;
-        }
+    NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.video];
+    if (!videoUrl) {
+        [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from reel"];
 
-        // 1. Try Primary Extraction (Ivar/Method)
-        NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.video];
-        
-        // 2. Try Cache Fallback if primary failed
-        if (!videoUrl) {
-            NSLog(@"[SCInsta] Primary extraction failed. Trying cache...");
-            videoUrl = [SCIUtils getCachedVideoUrlForView:self];
-        }
-
-        if (!videoUrl) {
-            [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL"];
-            return;
-        }
-
-        initDownloaders();
-        [videoDownloadDelegate downloadFileWithURL:videoUrl
-                                     fileExtension:@"mp4"
-                                          hudLabel:nil];
-    } @catch (NSException *exception) {
-        NSLog(@"[SCInsta] Crash in Reel download: %@", exception);
-        [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
+        return;
     }
+
+    // Download video & show in share menu
+    initDownloaders();
+    [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                 fileExtension:[[videoUrl lastPathComponent] pathExtension]
+                                      hudLabel:nil];
 }
 %end
 
 
 /* * Stories * */
 
-// Download story (images) (New Implementation)
+// Download story (images)
 %hook IGStoryPhotoView
 - (void)didMoveToSuperview {
     %orig;
@@ -246,7 +229,7 @@ static void initDownloaders () {
 }
 %end
 
-// Download story (videos) (New Implementation)
+// Download story (videos)
 %hook IGStoryModernVideoView
 - (void)didMoveToSuperview {
     %orig;
@@ -285,7 +268,7 @@ static void initDownloaders () {
 }
 %end
 
-// Download story (videos, legacy) (New Implementation)
+// Download story (videos, legacy)
 %hook IGStoryVideoView
 - (void)didMoveToSuperview {
     %orig;

@@ -1,7 +1,4 @@
-#import <UIKit/UIKit.h>
-#import <AVFoundation/AVFoundation.h>
 #import "Utils.h"
-#import "InstagramHeaders.h"
 
 @implementation SCIUtils
 
@@ -25,6 +22,13 @@
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSMutableArray<NSError *> *deletionErrors = [NSMutableArray array];
 
+    // Temp folder
+    // * disabled bc app crashed trying to delete certain files inside it
+    //NSError *tempFolderError;
+    //[fileManager removeItemAtURL:[NSURL fileURLWithPath:NSTemporaryDirectory()] error:&tempFolderError];
+
+    //if (tempFolderError) [deletionErrors addObject:tempFolderError];
+
     // Analytics folder
     NSError *analyticsFolderError;
     NSString *analyticsFolder = [[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"Application Support/com.burbn.instagram/analytics"];
@@ -45,10 +49,13 @@
 
     // Log errors
     if (deletionErrors.count > 1) {
+
         for (NSError *error in deletionErrors) {
             NSLog(@"[SCInsta] File Deletion Error: %@", error);
         }
+
     }
+
 }
 
 // Displaying View Controllers
@@ -74,10 +81,6 @@
     return [UIColor colorWithRed:0/255.0 green:152/255.0 blue:254/255.0 alpha:1];
 };
 
-+ (UIColor *)SCIColour_Primary {
-    return [self SCIColor_Primary];
-}
-
 // Errors
 + (NSError *)errorWithDescription:(NSString *)errorDesc {
     return [self errorWithDescription:errorDesc code:1];
@@ -96,281 +99,51 @@
     hud.indicatorView = [[JGProgressHUDErrorIndicatorView alloc] init];
 
     [hud showInView:topMostController().view];
-    [hud dismissAfterDelay:dismissDelay]; // Used New delay of 4.0 via default param
+    [hud dismissAfterDelay:4.0];
 
     return hud;
 }
 
 // Media
-// Legacy Robust Implementation for Media URL Extraction
 + (NSURL *)getPhotoUrl:(IGPhoto *)photo {
     if (!photo) return nil;
 
-    @try {
-        // BHInstagram's method: access _originalImageVersions ivar
-        NSArray *originalImageVersions = [photo valueForKey:@"_originalImageVersions"];
-        
-        if (originalImageVersions && [originalImageVersions isKindOfClass:[NSArray class]] && originalImageVersions.count > 0) {
-            id bestImageVersion = nil;
-            CGFloat maxPixels = 0;
+    // Get highest quality photo link
+    NSURL *photoUrl = [photo imageURLForWidth:100000.00];
 
-            for (id version in originalImageVersions) {
-                if ([version respondsToSelector:@selector(width)] && [version respondsToSelector:@selector(height)]) {
-                    CGFloat w = [[version valueForKey:@"width"] floatValue];
-                    CGFloat h = [[version valueForKey:@"height"] floatValue];
-                    CGFloat pixels = w * h;
-                    
-                    if (pixels >= maxPixels) {
-                        maxPixels = pixels;
-                        bestImageVersion = version;
-                    }
-                }
-            }
-            
-            if (!bestImageVersion) {
-                bestImageVersion = originalImageVersions[0];
-            }
-
-            if ([bestImageVersion respondsToSelector:@selector(url)]) {
-                NSURL *url = [bestImageVersion valueForKey:@"url"];
-                if (url && [url isKindOfClass:[NSURL class]]) {
-                    return url;
-                }
-            }
-        }
-        
-        if ([photo respondsToSelector:@selector(imageURLForWidth:)]) {
-            NSURL *photoUrl = [photo imageURLForWidth:100000.00];
-            if (photoUrl) {
-                return photoUrl;
-            }
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"[SCInsta] Exception in getPhotoUrl: %@", exception);
-    }
-
-    return nil;
+    return photoUrl;
 }
-
 + (NSURL *)getPhotoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
+
     IGPhoto *photo = media.photo;
+
     return [SCIUtils getPhotoUrl:photo];
 }
-
 + (NSURL *)getVideoUrl:(IGVideo *)video {
     if (!video) return nil;
-    
-    // 1. Try BHInstagram Method (Ivar Access)
-    @try {
-        NSArray *videoVersionDictionaries = [video valueForKey:@"_videoVersionDictionaries"];
-        if (videoVersionDictionaries && [videoVersionDictionaries isKindOfClass:[NSArray class]] && videoVersionDictionaries.count > 0) {
-            id firstVersion = videoVersionDictionaries[0];
-            if ([firstVersion isKindOfClass:[NSDictionary class]]) {
-                id urlValue = ((NSDictionary *)firstVersion)[@"url"];
-                if (urlValue && [urlValue isKindOfClass:[NSString class]]) {
-                     return [NSURL URLWithString:(NSString *)urlValue];
-                }
-            }
-        }
-    } @catch (NSException *e) { /* Ignore */ }
-    
-    // 2. Try _allVideoURLs Ivar
-    @try {
-        NSSet *allVideoURLs = [video valueForKey:@"_allVideoURLs"];
-        if (allVideoURLs && [allVideoURLs isKindOfClass:[NSSet class]]) {
-            NSURL *url = [allVideoURLs anyObject];
-            if (url) return url;
-        }
-    } @catch (NSException *e) { /* Ignore */ }
-    
-    // 3. Try known method names
-    NSArray *methods = @[@"sortedVideoURLsBySize", @"videoVersions", @"videoURLs", @"versions", @"playbackURL", @"allVideoURLs"];
-    for (NSString *method in methods) {
-        @try {
-            SEL selector = NSSelectorFromString(method);
-            if ([video respondsToSelector:selector]) {
-                #pragma clang diagnostic push
-                #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                id result = [video performSelector:selector];
-                #pragma clang diagnostic pop
-                
-                NSURL *extracted = [self extractURLFromVideoResult:result];
-                if (extracted) return extracted;
-            }
-        } @catch (NSException *e) { /* Ignore */ }
+
+    // The past (pre v398)
+    if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
+        NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
+        NSString *urlString = sorted.firstObject[@"url"];
+        return urlString.length ? [NSURL URLWithString:urlString] : nil;
     }
-    
+
+    // The present (post v398)
+    if ([video respondsToSelector:@selector(allVideoURLs)]) {
+        return [[video allVideoURLs] anyObject];
+    }
+
     return nil;
 }
-
-+ (NSURL *)extractURLFromVideoResult:(id)result {
-    if (!result) return nil;
-    if ([result isKindOfClass:[NSURL class]]) return result;
-    if ([result isKindOfClass:[NSString class]]) return [NSURL URLWithString:result];
-    
-    if ([result isKindOfClass:[NSArray class]]) {
-        NSArray *array = (NSArray *)result;
-        if (array.count < 1) return nil;
-        id firstElement = array[0];
-        
-        if ([firstElement isKindOfClass:[NSDictionary class]]) {
-            NSDictionary *dict = (NSDictionary *)firstElement;
-            id urlValue = dict[@"url"];
-            if ([urlValue isKindOfClass:[NSString class]]) return [NSURL URLWithString:urlValue];
-            if ([urlValue isKindOfClass:[NSURL class]]) return urlValue;
-        }
-        
-        if ([firstElement isKindOfClass:[NSURL class]]) return firstElement;
-        if ([firstElement isKindOfClass:[NSString class]]) return [NSURL URLWithString:firstElement];
-        
-        if ([firstElement respondsToSelector:@selector(url)]) {
-            #pragma clang diagnostic push
-            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id urlResult = [firstElement performSelector:@selector(url)];
-            #pragma clang diagnostic pop
-            return [self extractURLFromVideoResult:urlResult];
-        }
-    }
-    
-    if ([result isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *dict = (NSDictionary *)result;
-        id urlValue = dict[@"url"] ?: dict[@"playbackUrl"] ?: dict[@"videoUrl"];
-        if (urlValue) return [self extractURLFromVideoResult:urlValue];
-    }
-    
-    if ([result respondsToSelector:@selector(url)]) {
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-        id urlResult = [result performSelector:@selector(url)];
-        #pragma clang diagnostic pop
-        return [self extractURLFromVideoResult:urlResult];
-    }
-    
-    if ([result isKindOfClass:[NSSet class]]) {
-         return [self extractURLFromVideoResult:[result anyObject]];
-    }
-    
-    return nil;
-}
-
-
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
+
     IGVideo *video = media.video;
     if (!video) return nil;
+
     return [SCIUtils getVideoUrl:video];
-}
-
-// Search recursively for a player in subviews (Legacy Wrapper)
-+ (NSURL *)getCachedVideoUrlForView:(UIView *)view {
-    return [self getCachedVideoUrlForView:view depth:0];
-}
-
-// Recursive implementation with depth limit
-+ (NSURL *)getCachedVideoUrlForView:(UIView *)view depth:(NSInteger)depth {
-    if (!view || depth > 15) return nil;
-    
-    // 1. Check for AVPlayerLayer directly
-    if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
-        AVPlayerLayer *playerLayer = (AVPlayerLayer *)view.layer;
-        AVPlayer *player = playerLayer.player;
-        if (player) {
-            NSURL *url = [self getUrlFromPlayer:player];
-            if (url) return url;
-        }
-    }
-    
-    // 2. Check common property names for players or wrappers
-    NSArray *playerKeys = @[@"player", @"videoPlayer", @"avPlayer"];
-    
-    for (NSString *key in playerKeys) {
-        if ([view respondsToSelector:NSSelectorFromString(key)]) {
-            id playerObj = [view valueForKey:key];
-            if (playerObj && [playerObj isKindOfClass:[AVPlayer class]]) {
-                NSURL *url = [self getUrlFromPlayer:(AVPlayer *)playerObj];
-                if (url) return url;
-            }
-            if (playerObj && [playerObj respondsToSelector:@selector(avPlayer)]) {
-                id innerPlayer = [playerObj valueForKey:@"avPlayer"];
-                if (innerPlayer && [innerPlayer isKindOfClass:[AVPlayer class]]) {
-                    NSURL *url = [self getUrlFromPlayer:(AVPlayer *)innerPlayer];
-                    if (url) return url;
-                }
-            }
-        }
-    }
-    
-    // 3. Recursively check subviews
-    for (UIView *subview in view.subviews) {
-        NSURL *url = [self getCachedVideoUrlForView:subview depth:depth + 1];
-        if (url) return url;
-    }
-    
-    return nil;
-}
-
-+ (NSURL *)getUrlFromPlayer:(AVPlayer *)player {
-    AVPlayerItem *currentItem = player.currentItem;
-    if (!currentItem) return nil;
-    
-    AVAsset *asset = currentItem.asset;
-    if ([asset isKindOfClass:[AVURLAsset class]]) {
-        return [(AVURLAsset *)asset URL];
-    }
-    return nil;
-}
-
-+ (void)requestWebVideoUrlForMedia:(IGMedia *)media completion:(void(^)(NSURL *url))completion {
-    if (!media) {
-        if (completion) completion(nil);
-        return;
-    }
-
-    NSString *shortcode = nil;
-    if ([media respondsToSelector:@selector(code)]) {
-        shortcode = [media valueForKey:@"code"]; 
-    }
-    
-    if (!shortcode || ![shortcode isKindOfClass:[NSString class]] || shortcode.length == 0) {
-        if (completion) completion(nil);
-        return;
-    }
-    
-    NSURL *webUrl = [NSURL URLWithString:[NSString stringWithFormat:@"https://www.instagram.com/p/%@/", shortcode]];
-    
-    NSURLSession *session = [NSURLSession sharedSession];
-    [[session dataTaskWithURL:webUrl completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-        if (error || !data) {
-            if (completion) completion(nil);
-            return;
-        }
-        
-        NSString *html = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        if (!html) {
-             if (completion) completion(nil);
-             return;
-        }
-        
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"property=\"og:video\" content=\"([^\"]+)\"" options:0 error:nil];
-        NSTextCheckingResult *match = [regex firstMatchInString:html options:0 range:NSMakeRange(0, html.length)];
-        
-        if (match && match.range.location != NSNotFound) {
-            NSString *videoUrlString = [html substringWithRange:[match rangeAtIndex:1]];
-            if (completion) completion([NSURL URLWithString:videoUrlString]);
-        } else {
-            NSRegularExpression *jsonRegex = [NSRegularExpression regularExpressionWithPattern:@"\"video_url\":\"([^\"]+)\"" options:0 error:nil];
-            NSTextCheckingResult *jsonMatch = [jsonRegex firstMatchInString:html options:0 range:NSMakeRange(0, html.length)];
-            
-            if (jsonMatch && jsonMatch.range.location != NSNotFound) {
-                 NSString *jsonUrlString = [html substringWithRange:[jsonMatch rangeAtIndex:1]];
-                 jsonUrlString = [jsonUrlString stringByReplacingOccurrencesOfString:@"\\u0026" withString:@"&"];
-                 if (completion) completion([NSURL URLWithString:jsonUrlString]);
-            } else {
-                 if (completion) completion(nil);
-            }
-        }
-    }] resume];
 }
 
 // View Controllers
