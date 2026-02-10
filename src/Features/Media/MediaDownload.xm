@@ -89,6 +89,7 @@ static void initDownloaders () {
     longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
+    longPress.cancelsTouchesInView = NO; // Allow other gestures to work
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
@@ -275,6 +276,7 @@ static void initDownloaders () {
     longPress.numberOfTouchesRequired = [SCIManager getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
+    longPress.cancelsTouchesInView = NO; // Allow other gestures to work
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
@@ -355,5 +357,110 @@ static void initDownloaders () {
     [imageDownloadDelegate downloadFileWithURL:imageUrl
                                  fileExtension:[[imageUrl lastPathComponent] pathExtension]
                                       hudLabel:@"Loading"];
+}
+%end
+
+
+/* * Story Overlay Button * */
+
+%hook IGStoryFullscreenOverlayView
+- (void)layoutSubviews {
+    %orig;
+
+    if ([SCIManager getBoolPref:@"dw_story"]) {
+        [self setupDownloadButton];
+    }
+}
+
+%new
+- (void)setupDownloadButton {
+    if ([self viewWithTag:2938]) return; // Unique Tag to prevent duplicates
+
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.tag = 2938;
+    [btn setTitle:@"⬇️" forState:UIControlStateNormal];
+    [btn setBackgroundColor:[UIColor colorWithWhite:0 alpha:0.5]];
+    btn.layer.cornerRadius = 20; // Half of width/height
+    btn.clipsToBounds = YES;
+    
+    // Position: Bottom Right, slightly up to avoid "Send Message" bar and keyboard
+    // Adjust y-offset as needed. 150-180 points from bottom is usually safe for Stories.
+    CGFloat safeBottom = self.safeAreaInsets.bottom;
+    CGFloat buttonSize = 40;
+    CGFloat padding = 20;
+    
+    // Position it above the typical "Send message" area
+    btn.frame = CGRectMake(self.bounds.size.width - buttonSize - padding, 
+                           self.bounds.size.height - 180 - safeBottom, 
+                           buttonSize, 
+                           buttonSize);
+    
+    [btn addTarget:self action:@selector(handleDownloadTap) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:btn];
+    [self bringSubviewToFront:btn];
+}
+
+%new
+- (void)handleDownloadTap {
+    // Provide haptic feedback
+    UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [generator impactOccurred];
+
+    @try {
+        NSURL *videoUrl = nil;
+
+        // 1. Try Primary Extraction via Controller Traversal
+        // We are in the OverlayView, so we look up for the controller
+        UIViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+        
+        if (parentVC && [parentVC isKindOfClass:%c(IGStoryFullscreenSectionController)]) {
+            IGStoryFullscreenSectionController *controller = (IGStoryFullscreenSectionController *)parentVC;
+            if ([controller respondsToSelector:@selector(currentStoryItem)]) {
+                 IGMedia *media = controller.currentStoryItem;
+                 if (media) {
+                     videoUrl = [SCIUtils getVideoUrlForMedia:media];
+                 }
+            }
+        }
+        
+        // 2. Fallback: Aggressive Cache Search (Reels Style)
+        // Since we are in an overlay, 'self' won't contain the player.
+        // We MUST search the parent controller's view hierarchy.
+        if (!videoUrl) {
+            if (!parentVC) parentVC = [SCIUtils nearestViewControllerForView:self];
+            
+            if (parentVC) {
+                // NSLog(@"[SCInsta] Searching parent VC view for player: %@", [parentVC class]);
+                videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
+            }
+        }
+        
+        // 3. Last Fallback: Check if the overlay's delegate (often the controller) has info
+        if (!videoUrl && [self respondsToSelector:@selector(gestureDelegate)]) {
+            id delegate = [self gestureDelegate];
+            if (delegate && [delegate isKindOfClass:%c(IGStoryFullscreenSectionController)]) {
+                 IGStoryFullscreenSectionController *controller = (IGStoryFullscreenSectionController *)delegate;
+                 if ([controller respondsToSelector:@selector(currentStoryItem)]) {
+                     IGMedia *media = controller.currentStoryItem;
+                     if (media) {
+                         videoUrl = [SCIUtils getVideoUrlForMedia:media];
+                     }
+                 }
+            }
+        }
+
+        if (!videoUrl) {
+            [SCIUtils showErrorHUDWithDescription:@"Could not extract video URL from story"];
+            return;
+        }
+
+        initDownloaders();
+        [videoDownloadDelegate downloadFileWithURL:videoUrl
+                                     fileExtension:@"mp4"
+                                          hudLabel:nil];
+    } @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Crash in Story Button download: %@", exception);
+        [SCIUtils showErrorHUDWithDescription:@"Download crashed - check logs"];
+    }
 }
 %end
