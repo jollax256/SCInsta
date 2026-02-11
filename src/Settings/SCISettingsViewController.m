@@ -74,10 +74,10 @@ static char rowStaticRef[] = "row";
         
         UIViewController *presenter = self.presentingViewController;
         [presenter presentViewController:alert animated:YES completion:nil];
-        
-        // Done with first-time setup for this version
-        [[NSUserDefaults standardUserDefaults] setValue:SCIVersionString forKey:@"SCInstaFirstRun"];
     }
+    
+    // Done with first-time setup for this version
+    [[NSUserDefaults standardUserDefaults] setValue:SCIVersionString forKey:@"SCInstaFirstRun"];
 }
 
 #pragma mark - UITableViewDataSource
