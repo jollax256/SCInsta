@@ -282,14 +282,62 @@ static NSURL *sciProbeViewIvarsForPlayerURL(UIView *view) {
 // ─────────────────────────────────────────────
 static NSURL *sciGetVideoURL(id media, UIView *hostView, NSString **outDiag) {
     NSMutableArray *diag = [NSMutableArray array];
+    NSURL *url = nil;
 
-    // ── Step 1: Scan the full layer tree of all windows ──
-    NSURL *url = sciGetPlayingVideoURLFromWindows();
+    // ── Step 1: Structured IG API (most reliable — includes _videoVersionDictionaries) ──
+    @try {
+        // 1a. If media has a .video property, get the IGVideo and extract URLs
+        if (media && [media respondsToSelector:@selector(video)]) {
+            IGVideo *video = [media performSelector:@selector(video)];
+            if (video) {
+                url = [SCIUtils getVideoUrl:video];
+                if (url) {
+                    NSLog(@"[SCInsta] sciGetVideoURL: structured API (video selector)");
+                    return url;
+                }
+                [diag addObject:@"API: .video exists but no URLs"];
+            } else {
+                [diag addObject:@"API: .video returned nil"];
+            }
+        }
+
+        // 1b. If the media object IS an IGVideo, use it directly
+        if (media && [media isKindOfClass:NSClassFromString(@"IGVideo")]) {
+            url = [SCIUtils getVideoUrl:(IGVideo *)media];
+            if (url) {
+                NSLog(@"[SCInsta] sciGetVideoURL: structured API (IGVideo cast)");
+                return url;
+            }
+            [diag addObject:@"API: IGVideo cast but no URLs"];
+        }
+
+        // 1c. Try getVideoUrlForMedia if it's IGMedia
+        if (media && [media isKindOfClass:NSClassFromString(@"IGMedia")]) {
+            url = [SCIUtils getVideoUrlForMedia:(IGMedia *)media];
+            if (url) {
+                NSLog(@"[SCInsta] sciGetVideoURL: structured API (getVideoUrlForMedia)");
+                return url;
+            }
+        }
+
+        // 1d. Media has no video selector
+        if (media && ![media respondsToSelector:@selector(video)] && ![media isKindOfClass:NSClassFromString(@"IGVideo")]) {
+            [diag addObject:[NSString stringWithFormat:@"API: media (%@) has no video selector",
+                             NSStringFromClass([media class])]];
+        }
+        if (!media) {
+            [diag addObject:@"API: media object is nil"];
+        }
+    } @catch (NSException *e) {
+        [diag addObject:[NSString stringWithFormat:@"API crash: %@", e.reason ?: @"unknown"]];
+    }
+
+    // ── Step 2: Scan the full layer tree of all windows for AVPlayerLayer ──
+    url = sciGetPlayingVideoURLFromWindows();
     if (url) {
         NSLog(@"[SCInsta] sciGetVideoURL: found via window layer scan");
         return url;
     }
-    // Check if a player exists but with a non-downloadable URL (HLS)
     AVPlayer *activePlayer = sciFindAnyPlayingPlayer();
     if (activePlayer) {
         [diag addObject:@"Layer: player found but URL not downloadable (HLS?)"];
@@ -297,7 +345,7 @@ static NSURL *sciGetVideoURL(id media, UIView *hostView, NSString **outDiag) {
         [diag addObject:@"Layer: no AVPlayerLayer in any window"];
     }
 
-    // ── Step 2: Ivar probe on the gesture view + up to 8 ancestors ──
+    // ── Step 3: Ivar probe on the gesture view + up to 8 ancestors ──
     if (hostView) {
         @try {
             UIView *candidate = hostView;
@@ -315,39 +363,6 @@ static NSURL *sciGetVideoURL(id media, UIView *hostView, NSString **outDiag) {
         }
     } else {
         [diag addObject:@"Ivar probe: no host view"];
-    }
-
-    // ── Step 3: Structured IG API fallback ──
-    @try {
-        if ([media respondsToSelector:@selector(video)]) {
-            IGVideo *video = [media performSelector:@selector(video)];
-            if (video) {
-                url = [SCIUtils getVideoUrl:video];
-                if (url) {
-                    NSLog(@"[SCInsta] sciGetVideoURL: structured API (video selector)");
-                    return url;
-                }
-                [diag addObject:@"API: .video exists but no URLs"];
-            } else {
-                [diag addObject:@"API: .video returned nil"];
-            }
-        } else if (media) {
-            [diag addObject:[NSString stringWithFormat:@"API: media (%@) has no video selector",
-                             NSStringFromClass([media class])]];
-        } else {
-            [diag addObject:@"API: media object is nil"];
-        }
-
-        if ([media isKindOfClass:NSClassFromString(@"IGVideo")]) {
-            url = [SCIUtils getVideoUrl:(IGVideo *)media];
-            if (url) {
-                NSLog(@"[SCInsta] sciGetVideoURL: structured API (IGVideo cast)");
-                return url;
-            }
-            [diag addObject:@"API: IGVideo cast but no URLs"];
-        }
-    } @catch (NSException *e) {
-        [diag addObject:[NSString stringWithFormat:@"API crash: %@", e.reason ?: @"unknown"]];
     }
 
     NSString *diagString = [diag componentsJoinedByString:@" → "];
@@ -546,10 +561,67 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
 
 // Safely extract the media/video object from an IGSundialViewerVideoCell.
 // Instagram frequently renames or removes the .video property, so we probe
-// multiple selector names and ivar names instead of relying on one.
+// multiple methods:
+//   1. BHInstagram-style: walk view hierarchy for controls overlay → .media
+//   2. Selector probing on the cell itself
+//   3. Ivar probing on the cell itself
 static id sciGetReelMedia(id cell) {
     if (!cell) return nil;
-    // Try property selectors first
+
+    // ── Method 1: BHInstagram delegate chain approach ──
+    // Find the controls overlay view (or its Swift-mangled variants) in the
+    // view's subview tree. These overlays reliably hold an IGMedia reference.
+    @try {
+        NSArray *overlayClassNames = @[
+            @"IGSundialViewerControlsOverlayView",
+            @"_TtC30IGSundialViewerControlsOverlay34IGSundialViewerControlsOverlayView",
+            @"_TtC30IGSundialViewerControlsOverlay40IGSundialViewerModernControlsOverlayView"
+        ];
+        // Search subviews of the cell for controls overlay
+        NSMutableArray *queue = [NSMutableArray arrayWithObject:cell];
+        int visited = 0;
+        while (queue.count > 0 && visited < 200) {
+            UIView *current = queue.firstObject;
+            [queue removeObjectAtIndex:0];
+            visited++;
+            for (NSString *className in overlayClassNames) {
+                Class cls = NSClassFromString(className);
+                if (cls && [current isKindOfClass:cls]) {
+                    // Try .media property
+                    if ([current respondsToSelector:@selector(media)]) {
+                        id media = [(id)current performSelector:@selector(media)];
+                        if (media) {
+                            NSLog(@"[SCInsta] sciGetReelMedia: found via overlay %@.media", className);
+                            return media;
+                        }
+                    }
+                    // Try _media ivar
+                    id media = [SCIUtils getIvarForObj:current name:"_media"];
+                    if (media) {
+                        NSLog(@"[SCInsta] sciGetReelMedia: found via overlay %@._media", className);
+                        return media;
+                    }
+                }
+            }
+            // Also check delegate property for overlay controller with _media ivar
+            if ([current respondsToSelector:@selector(delegate)]) {
+                id delegate = [(id)current performSelector:@selector(delegate)];
+                if (delegate) {
+                    id media = [SCIUtils getIvarForObj:delegate name:"_media"];
+                    if (media) {
+                        NSLog(@"[SCInsta] sciGetReelMedia: found via delegate._media on %@",
+                              NSStringFromClass([delegate class]));
+                        return media;
+                    }
+                }
+            }
+            if ([current isKindOfClass:[UIView class]]) {
+                [queue addObjectsFromArray:[(UIView *)current subviews]];
+            }
+        }
+    } @catch (...) {}
+
+    // ── Method 2: Selector probing on the cell itself ──
     NSArray *selectorNames = @[@"video", @"media", @"post", @"mediaItem",
                                 @"currentMedia", @"feedItem", @"item",
                                 @"videoMedia", @"reelMedia"];
@@ -568,7 +640,8 @@ static id sciGetReelMedia(id cell) {
             }
         } @catch (...) {}
     }
-    // Try ivars
+
+    // ── Method 3: Ivar probing on the cell ──
     NSArray *ivarNames = @[@"_video", @"_media", @"_post", @"_mediaItem",
                            @"_currentMedia", @"_feedItem", @"_item",
                            @"_videoMedia", @"_reelMedia"];

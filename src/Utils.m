@@ -145,6 +145,37 @@
 + (NSURL *)getVideoUrl:(IGVideo *)video {
     if (!video) return nil;
 
+    // ── 0. Best method: _videoVersionDictionaries (used by BHInstagram) ──
+    // Direct ivar access to the structured video versions array.
+    // Each entry is an NSDictionary with keys: url, width, height, type, id.
+    // Pick the highest resolution (largest area).
+    @try {
+        NSArray *versions = [video valueForKey:@"_videoVersionDictionaries"];
+        if ([versions isKindOfClass:[NSArray class]] && versions.count > 0) {
+            NSDictionary *best = nil;
+            NSInteger bestArea = 0;
+            for (NSDictionary *v in versions) {
+                if (![v isKindOfClass:[NSDictionary class]]) continue;
+                NSInteger w = [v[@"width"] integerValue];
+                NSInteger h = [v[@"height"] integerValue];
+                NSInteger area = w * h;
+                if (area > bestArea) { bestArea = area; best = v; }
+            }
+            if (!best) best = versions.firstObject;
+            NSString *urlString = best[@"url"];
+            if (urlString.length) {
+                NSURL *url = [NSURL URLWithString:urlString];
+                if (url) {
+                    NSLog(@"[SCInsta] getVideoUrl: found via _videoVersionDictionaries (%ldx%ld)",
+                          (long)[best[@"width"] integerValue], (long)[best[@"height"] integerValue]);
+                    return url;
+                }
+            }
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrl _videoVersionDictionaries exception: %@", e);
+    }
+
     @try {
         // 1. Legacy API: returns array of dicts sorted by size ascending
         if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
