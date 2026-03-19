@@ -24,25 +24,180 @@ static NSURL *sciURLFromPlayer(AVPlayer *player) {
     if (!item) return nil;
     AVAsset *asset = item.asset;
     if (![asset isKindOfClass:[AVURLAsset class]]) return nil;
-    return ((AVURLAsset *)asset).URL;
+    NSURL *url = ((AVURLAsset *)asset).URL;
+    if (!url || url.absoluteString.length == 0) return nil;
+    // Skip HLS manifests — NSURLSession can't download them as video files.
+    // The structured API fallback will provide a direct .mp4 CDN link instead.
+    NSString *pathExt = url.path.pathExtension.lowercaseString;
+    if ([pathExt isEqualToString:@"m3u8"] || [pathExt isEqualToString:@"m3u"]) {
+        NSLog(@"[SCInsta] sciURLFromPlayer: skipping HLS manifest URL");
+        return nil;
+    }
+    return url;
 }
 
 // ─────────────────────────────────────────────
-// Helper: check a single view's layer + ivars
-// for an AVPlayer URL (non-recursive).
+// Helper: recursively walk a CALayer tree to
+// find any AVPlayerLayer with a downloadable URL.
 // ─────────────────────────────────────────────
-static NSURL *sciProbeViewForPlayerURL(UIView *view) {
-    if (!view) return nil;
+static NSURL *sciSearchLayerTree(CALayer *root, NSUInteger depth) {
+    if (!root || depth > 20) return nil;
     @try {
-        // 1. Walk sublayers for AVPlayerLayer
-        for (CALayer *layer in view.layer.sublayers) {
-            if (![layer isKindOfClass:NSClassFromString(@"AVPlayerLayer")]) continue;
-            AVPlayer *player = [layer valueForKey:@"player"];
+        if ([root isKindOfClass:NSClassFromString(@"AVPlayerLayer")]) {
+            AVPlayer *player = [root valueForKey:@"player"];
             NSURL *url = sciURLFromPlayer(player);
             if (url) return url;
         }
+        NSArray *sublayers = [root.sublayers copy];
+        for (CALayer *sub in sublayers) {
+            NSURL *url = sciSearchLayerTree(sub, depth + 1);
+            if (url) return url;
+        }
+    } @catch (NSException *e) {}
+    return nil;
+}
 
-        // 2. Try common Instagram ivar names for AVPlayer / player wrappers
+// ─────────────────────────────────────────────
+// Helper: find downloadable URL from all windows
+// ─────────────────────────────────────────────
+static NSURL *sciGetPlayingVideoURLFromWindows(void) {
+    @try {
+        NSArray<UIWindow *> *windows = [UIApplication sharedApplication].windows;
+        for (UIWindow *window in [windows copy]) {
+            if (!window || window.isHidden) continue;
+            NSURL *url = sciSearchLayerTree(window.layer, 0);
+            if (url) return url;
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] sciGetPlayingVideoURLFromWindows exception: %@", e);
+    }
+    return nil;
+}
+
+// ─────────────────────────────────────────────
+// Helper: find the AVPlayer itself (even if URL
+// is HLS/m3u8 — needed for export fallback).
+// ─────────────────────────────────────────────
+static AVPlayer *sciFindPlayerInLayerTree(CALayer *root, NSUInteger depth) {
+    if (!root || depth > 20) return nil;
+    @try {
+        if ([root isKindOfClass:NSClassFromString(@"AVPlayerLayer")]) {
+            AVPlayer *player = [root valueForKey:@"player"];
+            if (player && player.currentItem) return player;
+        }
+        NSArray *sublayers = [root.sublayers copy];
+        for (CALayer *sub in sublayers) {
+            AVPlayer *found = sciFindPlayerInLayerTree(sub, depth + 1);
+            if (found) return found;
+        }
+    } @catch (NSException *e) {}
+    return nil;
+}
+
+static AVPlayer *sciFindAnyPlayingPlayer(void) {
+    @try {
+        NSArray<UIWindow *> *windows = [UIApplication sharedApplication].windows;
+        for (UIWindow *window in [windows copy]) {
+            if (!window || window.isHidden) continue;
+            AVPlayer *p = sciFindPlayerInLayerTree(window.layer, 0);
+            if (p) return p;
+        }
+    } @catch (NSException *e) {}
+    return nil;
+}
+
+// ─────────────────────────────────────────────
+// Helper: export the currently-playing video
+// (works for HLS/m3u8, partially cached, etc.)
+// Uses AVAssetExportSession → writes mp4 to disk.
+// Calls the download delegate on completion.
+// ─────────────────────────────────────────────
+static void sciExportPlayerVideo(SCIDownloadDelegate *delegate) {
+    AVPlayer *player = sciFindAnyPlayingPlayer();
+    if (!player || !player.currentItem) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [SCIUtils showErrorHUDWithDescription:@"No active video player found"];
+        });
+        return;
+    }
+
+    AVAsset *asset = player.currentItem.asset;
+    if (!asset) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [SCIUtils showErrorHUDWithDescription:@"Player has no asset to export"];
+        });
+        return;
+    }
+
+    // Determine best export preset
+    NSArray *compatible = [AVAssetExportSession exportPresetsCompatibleWithAsset:asset];
+    NSString *preset = [compatible containsObject:AVAssetExportPresetHighestQuality]
+                       ? AVAssetExportPresetHighestQuality
+                       : AVAssetExportPresetPassthrough;
+
+    AVAssetExportSession *exporter = [AVAssetExportSession exportSessionWithAsset:asset presetName:preset];
+    if (!exporter) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [SCIUtils showErrorHUDWithDescription:@"Could not create video exporter"];
+        });
+        return;
+    }
+
+    // Write to a temp file
+    NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                         [NSString stringWithFormat:@"%@.mp4", NSUUID.UUID.UUIDString]];
+    exporter.outputURL = [NSURL fileURLWithPath:tmpPath];
+    exporter.outputFileType = AVFileTypeMPEG4;
+    exporter.shouldOptimizeForNetworkUse = YES;
+
+    NSLog(@"[SCInsta] Exporting video via AVAssetExportSession (preset: %@)...", preset);
+
+    // Show an "Exporting" HUD while the export runs
+    dispatch_async(dispatch_get_main_queue(), ^{
+        JGProgressHUD *exportHUD = [[JGProgressHUD alloc] init];
+        exportHUD.textLabel.text = @"Exporting video...";
+        exportHUD.interactionType = JGProgressHUDInteractionTypeBlockNoTouches;
+        [exportHUD showInView:topMostController().view];
+
+        [exporter exportAsynchronouslyWithCompletionHandler:^{
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [exportHUD dismiss];
+
+                switch (exporter.status) {
+                    case AVAssetExportSessionStatusCompleted: {
+                        NSLog(@"[SCInsta] Export completed: %@", tmpPath);
+                        // Hand the exported file to the standard download flow
+                        // (this will show its own HUD, copy to cache, then share/preview)
+                        [delegate downloadFileWithURL:[NSURL fileURLWithPath:tmpPath]
+                                        fileExtension:@"mp4"
+                                             hudLabel:@"Saving..."];
+                        break;
+                    }
+                    case AVAssetExportSessionStatusFailed: {
+                        NSString *errDesc = exporter.error.localizedDescription ?: @"unknown error";
+                        NSLog(@"[SCInsta] Export failed: %@", errDesc);
+                        [SCIUtils showErrorHUDWithDescription:
+                         [NSString stringWithFormat:@"Export failed: %@", errDesc]];
+                        break;
+                    }
+                    case AVAssetExportSessionStatusCancelled:
+                        NSLog(@"[SCInsta] Export cancelled");
+                        break;
+                    default:
+                        break;
+                }
+            });
+        }];
+    });
+}
+
+// ─────────────────────────────────────────────
+// Helper: check a single view's ivar slots for
+// an AVPlayer (used as secondary probe).
+// ─────────────────────────────────────────────
+static NSURL *sciProbeViewIvarsForPlayerURL(UIView *view) {
+    if (!view) return nil;
+    @try {
         NSArray *ivarNames = @[@"_player", @"_avPlayer", @"_videoPlayer",
                                @"_statefulVideoPlayer", @"_videoPlayerView",
                                @"_mediaPlayer", @"_avPlayerView"];
@@ -50,14 +205,11 @@ static NSURL *sciProbeViewForPlayerURL(UIView *view) {
             id playerObj = [SCIUtils getIvarForObj:view name:[ivarName UTF8String]];
             if (!playerObj) continue;
 
-            // Direct AVPlayer
             if ([playerObj isKindOfClass:[AVPlayer class]]) {
                 NSURL *url = sciURLFromPlayer((AVPlayer *)playerObj);
                 if (url) return url;
                 continue;
             }
-
-            // Wrapper that exposes .player
             if ([playerObj respondsToSelector:@selector(player)]) {
                 id p = [playerObj performSelector:@selector(player)];
                 if ([p isKindOfClass:[AVPlayer class]]) {
@@ -65,8 +217,6 @@ static NSURL *sciProbeViewForPlayerURL(UIView *view) {
                     if (url) return url;
                 }
             }
-
-            // Wrapper that exposes .avPlayer
             if ([playerObj respondsToSelector:@selector(avPlayer)]) {
                 id p = [playerObj performSelector:@selector(avPlayer)];
                 if ([p isKindOfClass:[AVPlayer class]]) {
@@ -74,126 +224,91 @@ static NSURL *sciProbeViewForPlayerURL(UIView *view) {
                     if (url) return url;
                 }
             }
-
-            // If the wrapper itself is a UIView, probe its layers too
-            if ([playerObj isKindOfClass:[UIView class]]) {
-                for (CALayer *layer in ((UIView *)playerObj).layer.sublayers) {
-                    if (![layer isKindOfClass:NSClassFromString(@"AVPlayerLayer")]) continue;
-                    AVPlayer *player = [layer valueForKey:@"player"];
-                    NSURL *url = sciURLFromPlayer(player);
-                    if (url) return url;
-                }
-            }
         }
     } @catch (NSException *e) {
-        NSLog(@"[SCInsta] sciProbeViewForPlayerURL exception: %@", e);
+        NSLog(@"[SCInsta] sciProbeViewIvarsForPlayerURL exception: %@", e);
     }
     return nil;
 }
 
 // ─────────────────────────────────────────────
-// Helper: recursively walk ALL subviews to find
-// any cached AVPlayer URL (BFS, max 8 levels).
+// Helper: video URL extractor with diagnostics.
+// Populates *outDiag with a human-readable trace
+// of what was tried and why each step failed.
 // ─────────────────────────────────────────────
-static NSURL *sciGetCachedVideoURLFromView(UIView *view) {
-    if (!view) return nil;
-    @try {
-        // BFS through the view tree
-        NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:view];
-        NSUInteger head = 0;
-        NSUInteger maxNodes = 150; // safety cap — Instagram views are deep but bounded
+static NSURL *sciGetVideoURL(id media, UIView *hostView, NSString **outDiag) {
+    NSMutableArray *diag = [NSMutableArray array];
 
-        while (head < queue.count && head < maxNodes) {
-            UIView *current = queue[head++];
-            if (!current) continue;
-
-            NSURL *url = sciProbeViewForPlayerURL(current);
-            if (url) return url;
-
-            // Snapshot subviews to avoid mutation-during-enumeration
-            NSArray<UIView *> *subs = [current.subviews copy];
-            for (UIView *sub in subs) {
-                if (sub) [queue addObject:sub];
-            }
-        }
-    } @catch (NSException *e) {
-        NSLog(@"[SCInsta] sciGetCachedVideoURLFromView exception: %@", e);
+    // ── Step 1: Scan the full layer tree of all windows ──
+    NSURL *url = sciGetPlayingVideoURLFromWindows();
+    if (url) {
+        NSLog(@"[SCInsta] sciGetVideoURL: found via window layer scan");
+        return url;
     }
-    return nil;
-}
-
-// ─────────────────────────────────────────────
-// Helper: walk UP the view hierarchy to find
-// a cached URL in parent/sibling views.
-// ─────────────────────────────────────────────
-static NSURL *sciGetCachedVideoURLFromViewAndParents(UIView *view) {
-    if (!view) return nil;
-    @try {
-        // First try the view itself + all its children (deep BFS)
-        NSURL *url = sciGetCachedVideoURLFromView(view);
-        if (url) return url;
-
-        // Walk up to 5 ancestors, probing each ancestor directly +
-        // all siblings of the child we just came from (shallow probe only).
-        UIView *lastChild = view;
-        UIView *ancestor = view.superview;
-        for (int i = 0; i < 5 && ancestor; i++) {
-            // Direct probe on the ancestor itself
-            url = sciProbeViewForPlayerURL(ancestor);
-            if (url) return url;
-
-            // Shallow-probe siblings of lastChild
-            for (UIView *sibling in ancestor.subviews) {
-                if (sibling == lastChild) continue; // skip the one we came from
-                url = sciProbeViewForPlayerURL(sibling);
-                if (url) return url;
-            }
-
-            lastChild = ancestor;
-            ancestor = ancestor.superview;
-        }
-    } @catch (NSException *e) {
-        NSLog(@"[SCInsta] sciGetCachedVideoURLFromViewAndParents exception: %@", e);
+    // Check if a player exists but with a non-downloadable URL (HLS)
+    AVPlayer *activePlayer = sciFindAnyPlayingPlayer();
+    if (activePlayer) {
+        [diag addObject:@"Layer: player found but URL not downloadable (HLS?)"];
+    } else {
+        [diag addObject:@"Layer: no AVPlayerLayer in any window"];
     }
-    return nil;
-}
 
-// ─────────────────────────────────────────────
-// Helper: video URL — always prefer the cached
-// AVPlayer URL (already loaded by Instagram).
-// ─────────────────────────────────────────────
-static NSURL *sciGetVideoURL(id media, UIView *hostView) {
-    // ALWAYS try cached AVPlayer URL first — it's the actual video playing,
-    // guaranteed to work, and immune to Instagram API changes.
+    // ── Step 2: Ivar probe on the gesture view + up to 8 ancestors ──
     if (hostView) {
-        NSURL *url = sciGetCachedVideoURLFromViewAndParents(hostView);
-        if (url) {
-            NSLog(@"[SCInsta] sciGetVideoURL: using cached AVPlayer URL");
-            return url;
+        @try {
+            UIView *candidate = hostView;
+            for (int i = 0; i < 8 && candidate; i++) {
+                url = sciProbeViewIvarsForPlayerURL(candidate);
+                if (url) {
+                    NSLog(@"[SCInsta] sciGetVideoURL: found via ivar probe (depth %d)", i);
+                    return url;
+                }
+                candidate = candidate.superview;
+            }
+            [diag addObject:@"Ivar probe: no player ivars in 8 ancestors"];
+        } @catch (NSException *e) {
+            [diag addObject:[NSString stringWithFormat:@"Ivar probe crash: %@", e.reason ?: @"unknown"]];
         }
+    } else {
+        [diag addObject:@"Ivar probe: no host view"];
     }
 
-    // Fallback to structured API only if cache miss (e.g. view not yet rendered)
+    // ── Step 3: Structured IG API fallback ──
     @try {
         if ([media respondsToSelector:@selector(video)]) {
             IGVideo *video = [media performSelector:@selector(video)];
-            NSURL *url = [SCIUtils getVideoUrl:video];
-            if (url) {
-                NSLog(@"[SCInsta] sciGetVideoURL: using structured API fallback");
-                return url;
+            if (video) {
+                url = [SCIUtils getVideoUrl:video];
+                if (url) {
+                    NSLog(@"[SCInsta] sciGetVideoURL: structured API (video selector)");
+                    return url;
+                }
+                [diag addObject:@"API: .video exists but no URLs"];
+            } else {
+                [diag addObject:@"API: .video returned nil"];
             }
+        } else if (media) {
+            [diag addObject:[NSString stringWithFormat:@"API: media (%@) has no video selector",
+                             NSStringFromClass([media class])]];
+        } else {
+            [diag addObject:@"API: media object is nil"];
         }
+
         if ([media isKindOfClass:NSClassFromString(@"IGVideo")]) {
-            NSURL *url = [SCIUtils getVideoUrl:(IGVideo *)media];
+            url = [SCIUtils getVideoUrl:(IGVideo *)media];
             if (url) {
-                NSLog(@"[SCInsta] sciGetVideoURL: using IGVideo direct fallback");
+                NSLog(@"[SCInsta] sciGetVideoURL: structured API (IGVideo cast)");
                 return url;
             }
+            [diag addObject:@"API: IGVideo cast but no URLs"];
         }
     } @catch (NSException *e) {
-        NSLog(@"[SCInsta] sciGetVideoURL API fallback exception: %@", e);
+        [diag addObject:[NSString stringWithFormat:@"API crash: %@", e.reason ?: @"unknown"]];
     }
 
+    NSString *diagString = [diag componentsJoinedByString:@" → "];
+    NSLog(@"[SCInsta] sciGetVideoURL FAILED: %@", diagString);
+    if (outDiag) *outDiag = diagString;
     return nil;
 }
 
@@ -314,11 +429,13 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         id media = nil;
         @try { media = [self mediaCellFeedItem]; } @catch (...) {}
 
-        NSURL *videoUrl = sciGetVideoURL(media, self);
+        NSString *diag = nil;
+        NSURL *videoUrl = sciGetVideoURL(media, self, &diag);
         if (!videoUrl) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [SCIUtils showErrorHUDWithDescription:@"Could not get video URL from feed post"];
-            });
+            // Ultimate fallback: export from the active player (handles HLS/streaming)
+            NSLog(@"[SCInsta] Feed video: no direct URL, trying export. Diag: %@", diag ?: @"none");
+            initDownloaders();
+            sciExportPlayerVideo(videoDownloadDelegate);
             return;
         }
 
@@ -327,8 +444,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         [videoDownloadDelegate downloadFileWithURL:videoUrl fileExtension:ext hudLabel:nil];
     } @catch (NSException *e) {
         NSLog(@"[SCInsta] Feed video download exception: %@", e);
+        NSString *msg = [NSString stringWithFormat:@"Feed crash: %@", e.reason ?: @"unknown"];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [SCIUtils showErrorHUDWithDescription:@"Download failed, try again"];
+            [SCIUtils showErrorHUDWithDescription:msg];
         });
     }
 }
@@ -396,12 +514,12 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
-        // self.video is IGMedia
-        NSURL *videoUrl = sciGetVideoURL(self.video, self);
+        NSString *diag = nil;
+        NSURL *videoUrl = sciGetVideoURL(self.video, self, &diag);
         if (!videoUrl) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [SCIUtils showErrorHUDWithDescription:@"Could not get video URL from reel"];
-            });
+            NSLog(@"[SCInsta] Reel: no direct URL, trying export. Diag: %@", diag ?: @"none");
+            initDownloaders();
+            sciExportPlayerVideo(videoDownloadDelegate);
             return;
         }
 
@@ -410,8 +528,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         [videoDownloadDelegate downloadFileWithURL:videoUrl fileExtension:ext hudLabel:nil];
     } @catch (NSException *e) {
         NSLog(@"[SCInsta] Reel video download exception: %@", e);
+        NSString *msg = [NSString stringWithFormat:@"Reel crash: %@", e.reason ?: @"unknown"];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [SCIUtils showErrorHUDWithDescription:@"Download failed, try again"];
+            [SCIUtils showErrorHUDWithDescription:msg];
         });
     }
 }
@@ -493,11 +612,12 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
-        NSURL *videoUrl = sciGetVideoURL(self.item, self);
+        NSString *diag = nil;
+        NSURL *videoUrl = sciGetVideoURL(self.item, self, &diag);
         if (!videoUrl) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [SCIUtils showErrorHUDWithDescription:@"Could not get video URL from story"];
-            });
+            NSLog(@"[SCInsta] Story (modern): no direct URL, trying export. Diag: %@", diag ?: @"none");
+            initDownloaders();
+            sciExportPlayerVideo(videoDownloadDelegate);
             return;
         }
 
@@ -506,8 +626,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         [videoDownloadDelegate downloadFileWithURL:videoUrl fileExtension:ext hudLabel:nil];
     } @catch (NSException *e) {
         NSLog(@"[SCInsta] Story (modern) video download exception: %@", e);
+        NSString *msg = [NSString stringWithFormat:@"Story crash: %@", e.reason ?: @"unknown"];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [SCIUtils showErrorHUDWithDescription:@"Download failed, try again"];
+            [SCIUtils showErrorHUDWithDescription:msg];
         });
     }
 }
@@ -533,18 +654,19 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
 
     @try {
         NSURL *videoUrl = nil;
+        NSString *diag = nil;
 
-        // 1. Cached URL via sciGetVideoURL (deep walk + parent walk + API fallback)
+        // 1. Try sciGetVideoURL (layer scan + ivar probe + API)
         IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
         if (captionDelegate) {
             @try {
-                videoUrl = sciGetVideoURL(captionDelegate.currentStoryItem, self);
+                videoUrl = sciGetVideoURL(captionDelegate.currentStoryItem, self, &diag);
             } @catch (...) {}
         }
 
-        // 2. If still nil, try with self directly (no media object)
+        // 2. If still nil, try window-level scan again with no media
         if (!videoUrl) {
-            videoUrl = sciGetCachedVideoURLFromViewAndParents(self);
+            videoUrl = sciGetPlayingVideoURLFromWindows();
         }
 
         // 3. Fallback: direct messages visual message
@@ -567,9 +689,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         }
 
         if (!videoUrl) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [SCIUtils showErrorHUDWithDescription:@"Could not get video URL from story"];
-            });
+            NSLog(@"[SCInsta] Story (legacy): no direct URL, trying export. Diag: %@", diag ?: @"none");
+            initDownloaders();
+            sciExportPlayerVideo(videoDownloadDelegate);
             return;
         }
 
@@ -578,8 +700,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         [videoDownloadDelegate downloadFileWithURL:videoUrl fileExtension:ext hudLabel:nil];
     } @catch (NSException *e) {
         NSLog(@"[SCInsta] Story (legacy) video download exception: %@", e);
+        NSString *msg = [NSString stringWithFormat:@"Story crash: %@", e.reason ?: @"unknown"];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [SCIUtils showErrorHUDWithDescription:@"Download failed, try again"];
+            [SCIUtils showErrorHUDWithDescription:msg];
         });
     }
 }

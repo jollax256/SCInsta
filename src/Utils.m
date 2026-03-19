@@ -146,10 +146,9 @@
     if (!video) return nil;
 
     @try {
-        // Legacy API (pre Instagram v398): returns array of dicts sorted by size ascending
+        // 1. Legacy API: returns array of dicts sorted by size ascending
         if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
             NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
-            // Last object = largest / highest quality
             NSDictionary *best = sorted.lastObject;
             NSString *urlString = best[@"url"];
             if (urlString.length) return [NSURL URLWithString:urlString];
@@ -159,26 +158,45 @@
     }
 
     @try {
-        // Modern API (post Instagram v398): returns an NSSet of NSURL objects
+        // 2. Modern API: returns an NSSet of NSURL objects — pick longest (highest quality)
         if ([video respondsToSelector:@selector(allVideoURLs)]) {
             NSSet *urls = [video allVideoURLs];
-            if (!urls.count) return nil;
-
-            // Pick the URL whose absolute string is longest – a reliable proxy for
-            // the highest-bitrate variant (CDN URLs embed quality params).
             NSURL *best = nil;
             NSUInteger bestLen = 0;
-            for (NSURL *u in urls) {
-                NSUInteger len = u.absoluteString.length;
-                if (len > bestLen) {
-                    bestLen = len;
-                    best = u;
-                }
+            for (id u in urls) {
+                NSURL *asURL = [u isKindOfClass:[NSURL class]] ? u
+                             : ([u isKindOfClass:[NSString class]] ? [NSURL URLWithString:u] : nil);
+                if (!asURL) continue;
+                NSUInteger len = asURL.absoluteString.length;
+                if (len > bestLen) { bestLen = len; best = asURL; }
             }
-            return best;
+            if (best) return best;
         }
     } @catch (NSException *e) {
         NSLog(@"[SCInsta] getVideoUrl allVideoURLs exception: %@", e);
+    }
+
+    // 3. Try additional single-URL selectors used in newer IG versions
+    NSArray<NSString *> *singleURLSelectors = @[
+        @"videoURL", @"bestVideoURL", @"downloadURL",
+        @"dashVideoURL", @"url", @"mediaURL"
+    ];
+    for (NSString *selName in singleURLSelectors) {
+        @try {
+            SEL sel = NSSelectorFromString(selName);
+            if (![video respondsToSelector:sel]) continue;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            id result = [video performSelector:sel];
+#pragma clang diagnostic pop
+            if ([result isKindOfClass:[NSURL class]] && ((NSURL *)result).absoluteString.length > 0) {
+                return result;
+            }
+            if ([result isKindOfClass:[NSString class]] && ((NSString *)result).length > 0) {
+                NSURL *u = [NSURL URLWithString:result];
+                if (u) return u;
+            }
+        } @catch (NSException *e) { /* continue */ }
     }
 
     return nil;
