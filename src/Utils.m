@@ -1,5 +1,6 @@
 #import "Utils.h"
 #import <AVFoundation/AVFoundation.h>
+#import <objc/runtime.h>
 
 @implementation SCIUtils
 
@@ -145,19 +146,135 @@
 + (NSURL *)getVideoUrl:(IGVideo *)video {
     if (!video) return nil;
 
-    // The past (pre v398)
-    if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
-        NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
-        NSString *urlString = sorted.firstObject[@"url"];
-        return urlString.length ? [NSURL URLWithString:urlString] : nil;
+    // 1. Post v398: allVideoURLs (most common modern path)
+    @try {
+        if ([video respondsToSelector:@selector(allVideoURLs)]) {
+            NSSet *urls = [video allVideoURLs];
+            if (urls.count) {
+                NSLog(@"[SCInsta] getVideoUrl: Found URL via allVideoURLs");
+                return [urls anyObject];
+            }
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrl: allVideoURLs threw: %@", e);
     }
 
-    // The present (post v398)
-    if ([video respondsToSelector:@selector(allVideoURLs)]) {
-        return [[video allVideoURLs] anyObject];
+    // 2. Pre v398: sortedVideoURLsBySize
+    @try {
+        if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
+            NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
+            NSString *urlString = sorted.firstObject[@"url"];
+            if (urlString.length) {
+                NSLog(@"[SCInsta] getVideoUrl: Found URL via sortedVideoURLsBySize");
+                return [NSURL URLWithString:urlString];
+            }
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrl: sortedVideoURLsBySize threw: %@", e);
     }
 
+    // 3. Direct url property (some IG versions)
+    @try {
+        if ([video respondsToSelector:@selector(url)]) {
+            NSURL *url = [video performSelector:@selector(url)];
+            if (url && [url isKindOfClass:[NSURL class]]) {
+                NSLog(@"[SCInsta] getVideoUrl: Found URL via url property");
+                return url;
+            }
+        }
+    } @catch (NSException *e) {}
+
+    // 4. videoURL property
+    @try {
+        if ([video respondsToSelector:@selector(videoURL)]) {
+            NSURL *url = [video performSelector:@selector(videoURL)];
+            if (url && [url isKindOfClass:[NSURL class]]) {
+                NSLog(@"[SCInsta] getVideoUrl: Found URL via videoURL property");
+                return url;
+            }
+        }
+    } @catch (NSException *e) {}
+
+    // 5. Runtime introspection: scan all properties for NSURL values
+    @try {
+        NSURL *url = [self _extractVideoURLByIntrospection:video];
+        if (url) {
+            NSLog(@"[SCInsta] getVideoUrl: Found URL via runtime introspection");
+            return url;
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrl: introspection threw: %@", e);
+    }
+
+    NSLog(@"[SCInsta] getVideoUrl: All extraction methods failed for %@", NSStringFromClass([video class]));
     return nil;
+}
+
++ (NSURL *)_extractVideoURLByIntrospection:(id)obj {
+    if (!obj) return nil;
+
+    unsigned int count = 0;
+    objc_property_t *properties = class_copyPropertyList([obj class], &count);
+    if (!properties) return nil;
+
+    NSURL *bestURL = nil;
+
+    for (unsigned int i = 0; i < count; i++) {
+        const char *name = property_getName(properties[i]);
+        if (!name) continue;
+
+        NSString *propName = [NSString stringWithUTF8String:name];
+
+        @try {
+            id value = [obj valueForKey:propName];
+
+            // Direct NSURL property
+            if ([value isKindOfClass:[NSURL class]]) {
+                NSURL *url = (NSURL *)value;
+                NSString *abs = url.absoluteString;
+                // Only accept URLs that look like video URLs (http/https with video-like paths)
+                if ([abs hasPrefix:@"http"] && ([abs containsString:@".mp4"] ||
+                    [abs containsString:@"video"] || [abs containsString:@".m3u8"])) {
+                    NSLog(@"[SCInsta] introspection: Found video URL in property '%@'", propName);
+                    bestURL = url;
+                    break;
+                }
+                // Accept any http URL if we don't find a better one
+                if (!bestURL && [abs hasPrefix:@"http"]) {
+                    bestURL = url;
+                }
+            }
+            // NSString that could be a URL
+            else if ([value isKindOfClass:[NSString class]]) {
+                NSString *str = (NSString *)value;
+                if ([str hasPrefix:@"http"] && ([str containsString:@".mp4"] ||
+                    [str containsString:@"video"])) {
+                    NSURL *url = [NSURL URLWithString:str];
+                    if (url) {
+                        NSLog(@"[SCInsta] introspection: Found video URL string in property '%@'", propName);
+                        bestURL = url;
+                        break;
+                    }
+                }
+            }
+            // NSSet or NSArray of URLs
+            else if ([value isKindOfClass:[NSSet class]] || [value isKindOfClass:[NSArray class]]) {
+                for (id item in value) {
+                    if ([item isKindOfClass:[NSURL class]]) {
+                        bestURL = (NSURL *)item;
+                        NSLog(@"[SCInsta] introspection: Found video URL in collection property '%@'", propName);
+                        break;
+                    }
+                }
+                if (bestURL) break;
+            }
+        } @catch (NSException *e) {
+            // Skip inaccessible properties
+        }
+    }
+
+    free(properties);
+    return bestURL;
 }
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
@@ -261,20 +378,23 @@
         return nil;
     }
 }
-// AVPlayer cache-based video URL extraction
+
+// AVPlayer cache-based video URL extraction fallback
+// Used when Instagram changes how they serve/secure video and model extraction fails.
+// Finds the URL the currently-playing AVPlayer is streaming from so we can download it.
 + (NSURL *)getCachedVideoUrlForView:(UIView *)view {
     @try {
         if (!view) return nil;
-        
+
         AVPlayer *player = [self _findAVPlayerInView:view depth:0 maxDepth:15];
         if (!player) return nil;
-        
+
         AVPlayerItem *currentItem = player.currentItem;
         if (!currentItem) return nil;
-        
+
         AVAsset *asset = currentItem.asset;
         if (!asset) return nil;
-        
+
         if ([asset isKindOfClass:[AVURLAsset class]]) {
             NSURL *url = ((AVURLAsset *)asset).URL;
             if (url) {
@@ -282,7 +402,7 @@
                 return url;
             }
         }
-        
+
         return nil;
     }
     @catch (NSException *exception) {
@@ -294,24 +414,21 @@
 + (AVPlayer *)_findAVPlayerInView:(UIView *)view depth:(int)depth maxDepth:(int)maxDepth {
     @try {
         if (!view || depth > maxDepth) return nil;
-        
-        // Check this view's layer
+
         CALayer *layer = view.layer;
         if (layer) {
             AVPlayer *player = [self _findAVPlayerInLayer:layer depth:0 maxDepth:5];
             if (player) return player;
         }
-        
-        // Recurse into subviews
+
         for (UIView *subview in view.subviews) {
             AVPlayer *player = [self _findAVPlayerInView:subview depth:depth + 1 maxDepth:maxDepth];
             if (player) return player;
         }
-        
+
         return nil;
     }
     @catch (NSException *exception) {
-        NSLog(@"[SCInsta] _findAVPlayerInView: Exception: %@", exception);
         return nil;
     }
 }
@@ -319,206 +436,20 @@
 + (AVPlayer *)_findAVPlayerInLayer:(CALayer *)layer depth:(int)depth maxDepth:(int)maxDepth {
     @try {
         if (!layer || depth > maxDepth) return nil;
-        
+
         if ([layer isKindOfClass:[AVPlayerLayer class]]) {
             AVPlayer *player = ((AVPlayerLayer *)layer).player;
             if (player) return player;
         }
-        
-        // Check sublayers
+
         for (CALayer *sublayer in layer.sublayers) {
             AVPlayer *player = [self _findAVPlayerInLayer:sublayer depth:depth + 1 maxDepth:maxDepth];
             if (player) return player;
         }
-        
+
         return nil;
     }
     @catch (NSException *exception) {
-        NSLog(@"[SCInsta] _findAVPlayerInLayer: Exception: %@", exception);
-        return nil;
-    }
-}
-
-+ (void)exportCachedVideoFromView:(UIView *)view completion:(void(^)(NSURL *fileURL, NSError *error))completion {
-    @try {
-        if (!view || !completion) {
-            if (completion) completion(nil, nil);
-            return;
-        }
-        
-        // 1. Try to find AVPlayer in this view
-        AVPlayer *player = [self _findAVPlayerInView:view depth:0 maxDepth:15];
-        
-        // 2. If not found, try parent controller's view
-        if (!player) {
-            UIViewController *parentVC = [self nearestViewControllerForView:view];
-            if (parentVC && parentVC.view) {
-                player = [self _findAVPlayerInView:parentVC.view depth:0 maxDepth:15];
-            }
-        }
-        
-        if (!player || !player.currentItem || !player.currentItem.asset) {
-            NSLog(@"[SCInsta] exportCachedVideo: No AVPlayer/asset found, trying cache files...");
-            
-            // 3. Last resort: find recently cached video file on disk
-            NSURL *cachedFile = [self _findRecentCachedVideoFile];
-            if (cachedFile) {
-                NSLog(@"[SCInsta] exportCachedVideo: Found cached file: %@", cachedFile);
-                // Copy to temp so it's safe to share
-                NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
-                    [NSString stringWithFormat:@"SCInsta_%@.mp4", NSUUID.UUID.UUIDString]];
-                NSURL *tempURL = [NSURL fileURLWithPath:tempPath];
-                NSError *copyErr;
-                [[NSFileManager defaultManager] copyItemAtURL:cachedFile toURL:tempURL error:&copyErr];
-                if (!copyErr) {
-                    completion(tempURL, nil);
-                    return;
-                }
-            }
-            
-            completion(nil, [self errorWithDescription:@"No video player found"]);
-            return;
-        }
-        
-        AVAsset *asset = player.currentItem.asset;
-        NSLog(@"[SCInsta] exportCachedVideo: Found asset of type: %@", NSStringFromClass([asset class]));
-        
-        // Check if it's a simple AVURLAsset — if so, just use the URL directly
-        if ([asset isKindOfClass:[AVURLAsset class]]) {
-            NSURL *url = ((AVURLAsset *)asset).URL;
-            if (url && [[NSFileManager defaultManager] fileExistsAtPath:url.path]) {
-                // It's a local file, copy it
-                NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
-                    [NSString stringWithFormat:@"SCInsta_%@.mp4", NSUUID.UUID.UUIDString]];
-                NSURL *tempURL = [NSURL fileURLWithPath:tempPath];
-                NSError *copyErr;
-                [[NSFileManager defaultManager] copyItemAtURL:url toURL:tempURL error:&copyErr];
-                if (!copyErr) {
-                    NSLog(@"[SCInsta] exportCachedVideo: Copied local file: %@", tempURL);
-                    completion(tempURL, nil);
-                    return;
-                }
-            }
-            // If it's a remote URL, still try export
-        }
-        
-        // Export the asset using AVAssetExportSession
-        NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
-            [NSString stringWithFormat:@"SCInsta_%@.mp4", NSUUID.UUID.UUIDString]];
-        NSURL *outputURL = [NSURL fileURLWithPath:tempPath];
-        
-        // Try passthrough first (fastest, no re-encoding)
-        NSArray *presets = @[AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPresetMediumQuality];
-        
-        [self _tryExportAsset:asset withPresets:presets presetIndex:0 outputURL:outputURL completion:completion];
-        
-    }
-    @catch (NSException *exception) {
-        NSLog(@"[SCInsta] exportCachedVideo: Exception: %@", exception);
-        if (completion) completion(nil, [self errorWithDescription:@"Export failed"]);
-    }
-}
-
-+ (void)_tryExportAsset:(AVAsset *)asset withPresets:(NSArray *)presets presetIndex:(NSUInteger)index outputURL:(NSURL *)outputURL completion:(void(^)(NSURL *, NSError *))completion {
-    if (index >= presets.count) {
-        NSLog(@"[SCInsta] exportCachedVideo: All presets failed");
-        completion(nil, [self errorWithDescription:@"Could not export video"]);
-        return;
-    }
-    
-    NSString *preset = presets[index];
-    
-    if (![AVAssetExportSession exportPresetsCompatibleWithAsset:asset].count) {
-        NSLog(@"[SCInsta] exportCachedVideo: No compatible presets for asset");
-        completion(nil, [self errorWithDescription:@"No compatible export presets"]);
-        return;
-    }
-    
-    AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset presetName:preset];
-    if (!exportSession) {
-        // Try next preset
-        [self _tryExportAsset:asset withPresets:presets presetIndex:index + 1 outputURL:outputURL completion:completion];
-        return;
-    }
-    
-    // Use a unique path for each attempt
-    NSString *attemptPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
-        [NSString stringWithFormat:@"SCInsta_%@.mp4", NSUUID.UUID.UUIDString]];
-    NSURL *attemptURL = [NSURL fileURLWithPath:attemptPath];
-    
-    exportSession.outputURL = attemptURL;
-    exportSession.outputFileType = AVFileTypeMPEG4;
-    exportSession.shouldOptimizeForNetworkUse = NO;
-    
-    NSLog(@"[SCInsta] exportCachedVideo: Trying preset: %@", preset);
-    
-    [exportSession exportAsynchronouslyWithCompletionHandler:^{
-        switch (exportSession.status) {
-            case AVAssetExportSessionStatusCompleted:
-                NSLog(@"[SCInsta] exportCachedVideo: Export completed with preset: %@", preset);
-                completion(attemptURL, nil);
-                break;
-            case AVAssetExportSessionStatusFailed:
-                NSLog(@"[SCInsta] exportCachedVideo: Preset %@ failed: %@", preset, exportSession.error);
-                // Try next preset
-                [self _tryExportAsset:asset withPresets:presets presetIndex:index + 1 outputURL:outputURL completion:completion];
-                break;
-            case AVAssetExportSessionStatusCancelled:
-                NSLog(@"[SCInsta] exportCachedVideo: Export cancelled");
-                completion(nil, [self errorWithDescription:@"Export cancelled"]);
-                break;
-            default:
-                [self _tryExportAsset:asset withPresets:presets presetIndex:index + 1 outputURL:outputURL completion:completion];
-                break;
-        }
-    }];
-}
-
-+ (NSURL *)_findRecentCachedVideoFile {
-    @try {
-        NSFileManager *fm = [NSFileManager defaultManager];
-        NSArray *searchDirs = @[
-            NSTemporaryDirectory(),
-            [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject]
-        ];
-        
-        NSDate *mostRecentDate = nil;
-        NSURL *mostRecentFile = nil;
-        NSSet *videoExts = [NSSet setWithArray:@[@"mp4", @"mov", @"m4v"]];
-        
-        for (NSString *searchDir in searchDirs) {
-            if (!searchDir) continue;
-            
-            NSDirectoryEnumerator *enumerator = [fm enumeratorAtURL:[NSURL fileURLWithPath:searchDir]
-                includingPropertiesForKeys:@[NSURLContentModificationDateKey, NSURLFileSizeKey]
-                options:0
-                errorHandler:nil];
-            
-            for (NSURL *fileURL in enumerator) {
-                NSString *ext = [[fileURL pathExtension] lowercaseString];
-                if (![videoExts containsObject:ext]) continue;
-                
-                NSDate *modDate = nil;
-                NSNumber *fileSize = nil;
-                [fileURL getResourceValue:&modDate forKey:NSURLContentModificationDateKey error:nil];
-                [fileURL getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil];
-                
-                // Only consider files modified in the last 30 seconds and > 100KB
-                if (!modDate || !fileSize || fileSize.longLongValue < 100000) continue;
-                NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:modDate];
-                if (age > 30) continue;
-                
-                if (!mostRecentDate || [modDate compare:mostRecentDate] == NSOrderedDescending) {
-                    mostRecentDate = modDate;
-                    mostRecentFile = fileURL;
-                }
-            }
-        }
-        
-        return mostRecentFile;
-    }
-    @catch (NSException *exception) {
-        NSLog(@"[SCInsta] _findRecentCachedVideoFile: Exception: %@", exception);
         return nil;
     }
 }
