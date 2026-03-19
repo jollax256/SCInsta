@@ -18,25 +18,30 @@
     return self;
 }
 - (void)downloadFileWithURL:(NSURL *)url fileExtension:(NSString *)fileExtension hudLabel:(NSString *)hudLabel {
-    // Show progress gui (non-blocking: userInteractionEnabled = NO so scrolling still works)
+    // Show progress gui
     self.hud = [[JGProgressHUD alloc] init];
     self.hud.textLabel.text = hudLabel != nil ? hudLabel : @"Downloading";
-    self.hud.userInteractionEnabled = NO;
 
     if (self.showProgress) {
-        JGProgressHUDRingIndicatorView *indicatorView = [[JGProgressHUDRingIndicatorView alloc] init];
+        JGProgressHUDRingIndicatorView *indicatorView = [[JGProgressHUDRingIndicatorView alloc] init ];
         indicatorView.roundProgressLine = YES;
         indicatorView.ringWidth = 3.5;
 
         self.hud.indicatorView = indicatorView;
         self.hud.detailTextLabel.text = [NSString stringWithFormat:@"00%% Complete"];
+
+        // Allow dismissing longer downloads (requiring progress updates)
+        __weak typeof(self) weakSelf = self;
+        self.hud.tapOutsideBlock = ^(JGProgressHUD * _Nonnull HUD) {
+            [weakSelf.downloadManager cancelDownload];
+        };
     }
 
     [self.hud showInView:topMostController().view];
 
     NSLog(@"[SCInsta] Download: Will start download for url \"%@\" with file extension: \".%@\"", url, fileExtension);
 
-    // Start download using manager (runs in background via NSURLSession)
+    // Start download using manager
     [self.downloadManager downloadFileWithURL:url fileExtension:fileExtension];
 }
 

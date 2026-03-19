@@ -9,9 +9,7 @@
 #import "InstagramHeaders.h"
 #import "QuickLook.h"
 
-#ifdef __cplusplus
-#define _Bool bool
-#endif
+#import "Settings/SCISettingsViewController.h"
 
 #define SCILog(fmt, ...) \
     do { \
@@ -27,11 +25,14 @@
 + (double)getDoublePref:(NSString *)key;
 + (NSString *)getStringPref:(NSString *)key;
 
++ (_Bool)liquidGlassEnabledBool:(_Bool)fallback;
+
 + (void)cleanCache;
 
 // Displaying View Controllers
 + (void)showQuickLookVC:(NSArray<id> *)items;
 + (void)showShareVC:(id)item;
++ (void)showSettingsVC:(UIWindow *)window;
 
 // Colours
 + (UIColor *)SCIColor_Primary;
@@ -64,14 +65,23 @@
 + (BOOL)isNotch;
 
 + (BOOL)existingLongPressGestureRecognizerForView:(UIView *)view;
+
+// Alerts
 + (BOOL)showConfirmation:(void(^)(void))okHandler title:(NSString *)title;
 + (BOOL)showConfirmation:(void(^)(void))okHandler cancelHandler:(void(^)(void))cancelHandler title:(NSString *)title;
 + (BOOL)showConfirmation:(void(^)(void))okHandler;
 + (BOOL)showConfirmation:(void(^)(void))okHandler cancelHandler:(void(^)(void))cancelHandler;
 + (void)showRestartConfirmation;
-+ (void)prepareAlertPopoverIfNeeded:(UIAlertController*)alert inView:(UIView*)view;
+
+// Toasts
++ (void)showToastForDuration:(double)duration title:(NSString *)title;
++ (void)showToastForDuration:(double)duration title:(NSString *)title subtitle:(NSString *)subtitle;
 
 // Math
 + (NSUInteger)decimalPlacesInDouble:(double)value;
+
+// Ivars
++ (id)getIvarForObj:(id)obj name:(const char *)name;
++ (void)setIvarForObj:(id)obj name:(const char *)name value:(id)value;
 
 @end

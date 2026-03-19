@@ -31,6 +31,12 @@ static char rowStaticRef[] = "row";
                     [mutableSections removeObjectAtIndex:index];
                 }
             }
+
+            else if ([section[@"header"] isEqualToString:@"Experimental"]) {
+                if (![[SCIUtils IGVersionString] hasSuffix:@"-dev"]) {
+                    [mutableSections removeObjectAtIndex:index];
+                }
+            }
             
         }];
         
@@ -63,7 +69,7 @@ static char rowStaticRef[] = "row";
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     
-    if (![[NSUserDefaults standardUserDefaults] objectForKey:@"SCInstaFirstRun"]) {
+    if (![[[NSUserDefaults standardUserDefaults] objectForKey:@"SCInstaFirstRun"] isEqualToString:SCIVersionString]) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SCInsta Settings Info"
                                                                        message:@"In the future: Hold down on the three lines at the top right of your profile page, to re-open SCInsta settings."
                                                                 preferredStyle:UIAlertControllerStyleAlert];
@@ -74,13 +80,13 @@ static char rowStaticRef[] = "row";
         
         UIViewController *presenter = self.presentingViewController;
         [presenter presentViewController:alert animated:YES completion:nil];
+        
+        // Done with first-time setup for this version
+        [[NSUserDefaults standardUserDefaults] setValue:SCIVersionString forKey:@"SCInstaFirstRun"];
     }
-    
-    // Done with first-time setup for this version
-    [[NSUserDefaults standardUserDefaults] setValue:SCIVersionString forKey:@"SCInstaFirstRun"];
 }
 
-#pragma mark - UITableViewDataSource
+// MARK: - UITableViewDataSource
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     SCISetting *row = self.sections[indexPath.section][@"rows"][indexPath.row];
@@ -218,7 +224,7 @@ static char rowStaticRef[] = "row";
     return self.sections.count;
 }
 
-#pragma mark - UITableViewDelegate
+// MARK: - UITableViewDelegate
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     SCISetting *row = self.sections[indexPath.section][@"rows"][indexPath.row];
@@ -238,12 +244,15 @@ static char rowStaticRef[] = "row";
             vc.title = row.title;
             [self.navigationController pushViewController:vc animated:YES];
         }
+        else if (row.navViewController) {
+            [self.navigationController pushViewController:row.navViewController animated:YES];
+        }
     }
 
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
-#pragma mark - Actions
+// MARK: - Actions
 
 - (void)switchChanged:(UISwitch *)sender {
     SCISetting *row = objc_getAssociatedObject(sender, rowStaticRef);
@@ -279,7 +288,7 @@ static char rowStaticRef[] = "row";
     }
 }
 
-#pragma mark - Helper
+// MARK: - Helper
 
 - (NSString *)formatString:(NSString *)template withValue:(double)value label:(NSString *)label singularLabel:(NSString *)singularLabel {
     // Singular or plural labels

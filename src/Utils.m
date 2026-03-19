@@ -19,23 +19,37 @@
     return [[NSUserDefaults standardUserDefaults] stringForKey:key];
 }
 
++ (_Bool)liquidGlassEnabledBool:(_Bool)fallback {
+    BOOL setting = [SCIUtils getBoolPref:@"liquid_glass_surfaces"];
+    return setting ? true : fallback;
+}
+
 + (void)cleanCache {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSMutableArray<NSError *> *deletionErrors = [NSMutableArray array];
 
-    // Temp folder
     // * disabled bc app crashed trying to delete certain files inside it
-    //NSError *tempFolderError;
-    //[fileManager removeItemAtURL:[NSURL fileURLWithPath:NSTemporaryDirectory()] error:&tempFolderError];
+    // todo: remove the above disclaimer if this new code doesn't cause crashing
+    // Temp folder
+    NSArray *tempFolderContents = [fileManager contentsOfDirectoryAtURL:[NSURL fileURLWithPath:NSTemporaryDirectory()] includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles error:nil];
 
-    //if (tempFolderError) [deletionErrors addObject:tempFolderError];
+    for (NSURL *fileURL in tempFolderContents) {
+        NSError *cacheItemDeletionError;
+        [fileManager removeItemAtURL:fileURL error:&cacheItemDeletionError];
+
+        if (cacheItemDeletionError) [deletionErrors addObject:cacheItemDeletionError];
+    }
 
     // Analytics folder
-    NSError *analyticsFolderError;
     NSString *analyticsFolder = [[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"Application Support/com.burbn.instagram/analytics"];
-    [fileManager removeItemAtURL:[[NSURL alloc] initFileURLWithPath:analyticsFolder] error:&analyticsFolderError];
+    NSArray *analyticsFolderContents = [fileManager contentsOfDirectoryAtURL:[[NSURL alloc] initFileURLWithPath:analyticsFolder] includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles error:nil];
 
-    if (analyticsFolderError) [deletionErrors addObject:analyticsFolderError];
+    for (NSURL *fileURL in analyticsFolderContents) {
+        NSError *cacheItemDeletionError;
+        [fileManager removeItemAtURL:fileURL error:&cacheItemDeletionError];
+
+        if (cacheItemDeletionError) [deletionErrors addObject:cacheItemDeletionError];
+    }
     
     // Caches folder
     NSString *cachesFolder = [[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"Caches"];
@@ -75,6 +89,13 @@
         acVC.popoverPresentationController.sourceRect = CGRectMake(topMostController().view.bounds.size.width / 2.0, topMostController().view.bounds.size.height / 2.0, 1.0, 1.0);
     }
     [topMostController() presentViewController:acVC animated:true completion:nil];
+}
++ (void)showSettingsVC:(UIWindow *)window {
+    UIViewController *rootController = [window rootViewController];
+    SCISettingsViewController *settingsViewController = [SCISettingsViewController new];
+    UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:settingsViewController];
+    
+    [rootController presentViewController:navigationController animated:YES completion:nil];
 }
 
 // Colours
@@ -146,6 +167,8 @@
 
     return [SCIUtils getVideoUrl:video];
 }
+
+// === OUR CUSTOM VIDEO DOWNLOAD HELPERS (preserved from our fork) ===
 
 + (NSURL *)getVideoUrlForPostItem:(IGPostItem *)postItem {
     @try {
@@ -500,6 +523,8 @@
     }
 }
 
+// === END OF OUR CUSTOM VIDEO DOWNLOAD HELPERS ===
+
 // View Controllers
 + (UIViewController *)viewControllerForView:(UIView *)view {
     NSString *viewDelegate = @"viewDelegate";
@@ -542,6 +567,8 @@
 
     return NO;
 }
+
+// Alerts
 + (BOOL)showConfirmation:(void(^)(void))okHandler title:(NSString *)title {
     UIAlertController* alert = [UIAlertController alertControllerWithTitle:title message:@"Are you sure?" preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Yes" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
@@ -554,7 +581,7 @@
     return nil;
 };
 + (BOOL)showConfirmation:(void(^)(void))okHandler cancelHandler:(void(^)(void))cancelHandler title:(NSString *)title {
-    UIAlertController* alert = [UIAlertController alertControllerWithTitle:nil message:@"Are you sure?" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:title message:@"Are you sure?" preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Yes" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         okHandler();
     }]];
@@ -583,14 +610,35 @@
 
     [topMostController() presentViewController:alert animated:YES completion:nil];
 };
-+ (void)prepareAlertPopoverIfNeeded:(UIAlertController*)alert inView:(UIView*)view {
-    if (alert.popoverPresentationController) {
-        // UIAlertController is a popover on iPad. Display it in the center of a view.
-        alert.popoverPresentationController.sourceView = view;
-        alert.popoverPresentationController.sourceRect = CGRectMake(view.bounds.size.width / 2.0, view.bounds.size.height / 2.0, 1.0, 1.0);
-        alert.popoverPresentationController.permittedArrowDirections = 0;
-    }
-};
+
+// Toasts
++ (void)showToastForDuration:(double)duration title:(NSString *)title {
+    [SCIUtils showToastForDuration:duration title:title subtitle:nil];
+}
++ (void)showToastForDuration:(double)duration title:(NSString *)title subtitle:(NSString *)subtitle {
+    // Root VC
+    Class rootVCClass = NSClassFromString(@"IGRootViewController");
+
+    UIViewController *topMostVC = topMostController();
+    if (![topMostVC isKindOfClass:rootVCClass]) return;
+
+    IGRootViewController *rootVC = (IGRootViewController *)topMostVC;
+
+    // Presenter
+    IGActionableConfirmationToastPresenter *toastPresenter = [rootVC toastPresenter];
+    if (toastPresenter == nil) return;
+
+    // View Model
+    Class modelClass = NSClassFromString(@"IGActionableConfirmationToastViewModel");
+    IGActionableConfirmationToastViewModel *model = [modelClass new];
+    
+    [model setValue:title forKey:@"text_annotatedTitleText"];
+    [model setValue:subtitle forKey:@"text_annotatedSubtitleText"];
+
+    // Show new toast, after clearing existing one
+    [toastPresenter hideAlert];
+    [toastPresenter showAlertWithViewModel:model isAnimated:true animationDuration:duration presentationPriority:0 tapActionBlock:nil presentedHandler:nil dismissedHandler:nil];
+}
 
 // Math
 + (NSUInteger)decimalPlacesInDouble:(double)value {
@@ -611,5 +659,20 @@
         return stringValue.length - (decimalRange.location + decimalRange.length);
     }
 }
+
+// Ivars
++ (id)getIvarForObj:(id)obj name:(const char *)name {
+    Ivar ivar = class_getInstanceVariable(object_getClass(obj), name);
+    if (!ivar) return nil;
+
+    return object_getIvar(obj, ivar);
+}
++ (void)setIvarForObj:(id)obj name:(const char *)name value:(id)value {
+    Ivar ivar = class_getInstanceVariable(object_getClass(obj), name);
+    if (!ivar) return;
+    
+    object_setIvarWithStrongDefault(obj, ivar, value);
+}
+
 
 @end
