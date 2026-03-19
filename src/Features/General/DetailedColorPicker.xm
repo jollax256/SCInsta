@@ -54,10 +54,13 @@
     // Trigger change for text color
     id presentingVC = [SCIUtils nearestViewControllerForView:self];
 
-    if ([presentingVC isKindOfClass:%c(IGDirectRecipientCellViewModel)]) {
+    if ([presentingVC isKindOfClass:%c(IGStoryTextEntryViewController)]) {
         [presentingVC textViewControllerDidUpdateWithColor:color colorSource:0];
     }
-    else if ([presentingVC isKindOfClass:%c(IGDirectThreadViewDrawingViewController)]) {
+    else if (
+        [presentingVC isKindOfClass:%c(IGStoryCreationDrawingViewController)]
+        || [presentingVC isKindOfClass:%c(IGDirectThreadViewDrawingViewController)]
+    ) {
         [presentingVC drawingControls:nil didSelectColor:color];
     }
 

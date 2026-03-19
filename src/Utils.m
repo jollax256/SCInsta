@@ -1,6 +1,4 @@
 #import "Utils.h"
-#import <AVFoundation/AVFoundation.h>
-#import <objc/runtime.h>
 
 @implementation SCIUtils
 
@@ -29,9 +27,9 @@
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSMutableArray<NSError *> *deletionErrors = [NSMutableArray array];
 
+    // Temp folder
     // * disabled bc app crashed trying to delete certain files inside it
     // todo: remove the above disclaimer if this new code doesn't cause crashing
-    // Temp folder
     NSArray *tempFolderContents = [fileManager contentsOfDirectoryAtURL:[NSURL fileURLWithPath:NSTemporaryDirectory()] includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles error:nil];
 
     for (NSURL *fileURL in tempFolderContents) {
@@ -146,135 +144,19 @@
 + (NSURL *)getVideoUrl:(IGVideo *)video {
     if (!video) return nil;
 
-    // 1. Post v398: allVideoURLs (most common modern path)
-    @try {
-        if ([video respondsToSelector:@selector(allVideoURLs)]) {
-            NSSet *urls = [video allVideoURLs];
-            if (urls.count) {
-                NSLog(@"[SCInsta] getVideoUrl: Found URL via allVideoURLs");
-                return [urls anyObject];
-            }
-        }
-    } @catch (NSException *e) {
-        NSLog(@"[SCInsta] getVideoUrl: allVideoURLs threw: %@", e);
+    // The past (pre v398)
+    if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
+        NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
+        NSString *urlString = sorted.firstObject[@"url"];
+        return urlString.length ? [NSURL URLWithString:urlString] : nil;
     }
 
-    // 2. Pre v398: sortedVideoURLsBySize
-    @try {
-        if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
-            NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
-            NSString *urlString = sorted.firstObject[@"url"];
-            if (urlString.length) {
-                NSLog(@"[SCInsta] getVideoUrl: Found URL via sortedVideoURLsBySize");
-                return [NSURL URLWithString:urlString];
-            }
-        }
-    } @catch (NSException *e) {
-        NSLog(@"[SCInsta] getVideoUrl: sortedVideoURLsBySize threw: %@", e);
+    // The present (post v398)
+    if ([video respondsToSelector:@selector(allVideoURLs)]) {
+        return [[video allVideoURLs] anyObject];
     }
 
-    // 3. Direct url property (some IG versions)
-    @try {
-        if ([video respondsToSelector:@selector(url)]) {
-            NSURL *url = [video performSelector:@selector(url)];
-            if (url && [url isKindOfClass:[NSURL class]]) {
-                NSLog(@"[SCInsta] getVideoUrl: Found URL via url property");
-                return url;
-            }
-        }
-    } @catch (NSException *e) {}
-
-    // 4. videoURL property
-    @try {
-        if ([video respondsToSelector:@selector(videoURL)]) {
-            NSURL *url = [video performSelector:@selector(videoURL)];
-            if (url && [url isKindOfClass:[NSURL class]]) {
-                NSLog(@"[SCInsta] getVideoUrl: Found URL via videoURL property");
-                return url;
-            }
-        }
-    } @catch (NSException *e) {}
-
-    // 5. Runtime introspection: scan all properties for NSURL values
-    @try {
-        NSURL *url = [self _extractVideoURLByIntrospection:video];
-        if (url) {
-            NSLog(@"[SCInsta] getVideoUrl: Found URL via runtime introspection");
-            return url;
-        }
-    } @catch (NSException *e) {
-        NSLog(@"[SCInsta] getVideoUrl: introspection threw: %@", e);
-    }
-
-    NSLog(@"[SCInsta] getVideoUrl: All extraction methods failed for %@", NSStringFromClass([video class]));
     return nil;
-}
-
-+ (NSURL *)_extractVideoURLByIntrospection:(id)obj {
-    if (!obj) return nil;
-
-    unsigned int count = 0;
-    objc_property_t *properties = class_copyPropertyList([obj class], &count);
-    if (!properties) return nil;
-
-    NSURL *bestURL = nil;
-
-    for (unsigned int i = 0; i < count; i++) {
-        const char *name = property_getName(properties[i]);
-        if (!name) continue;
-
-        NSString *propName = [NSString stringWithUTF8String:name];
-
-        @try {
-            id value = [obj valueForKey:propName];
-
-            // Direct NSURL property
-            if ([value isKindOfClass:[NSURL class]]) {
-                NSURL *url = (NSURL *)value;
-                NSString *abs = url.absoluteString;
-                // Only accept URLs that look like video URLs (http/https with video-like paths)
-                if ([abs hasPrefix:@"http"] && ([abs containsString:@".mp4"] ||
-                    [abs containsString:@"video"] || [abs containsString:@".m3u8"])) {
-                    NSLog(@"[SCInsta] introspection: Found video URL in property '%@'", propName);
-                    bestURL = url;
-                    break;
-                }
-                // Accept any http URL if we don't find a better one
-                if (!bestURL && [abs hasPrefix:@"http"]) {
-                    bestURL = url;
-                }
-            }
-            // NSString that could be a URL
-            else if ([value isKindOfClass:[NSString class]]) {
-                NSString *str = (NSString *)value;
-                if ([str hasPrefix:@"http"] && ([str containsString:@".mp4"] ||
-                    [str containsString:@"video"])) {
-                    NSURL *url = [NSURL URLWithString:str];
-                    if (url) {
-                        NSLog(@"[SCInsta] introspection: Found video URL string in property '%@'", propName);
-                        bestURL = url;
-                        break;
-                    }
-                }
-            }
-            // NSSet or NSArray of URLs
-            else if ([value isKindOfClass:[NSSet class]] || [value isKindOfClass:[NSArray class]]) {
-                for (id item in value) {
-                    if ([item isKindOfClass:[NSURL class]]) {
-                        bestURL = (NSURL *)item;
-                        NSLog(@"[SCInsta] introspection: Found video URL in collection property '%@'", propName);
-                        break;
-                    }
-                }
-                if (bestURL) break;
-            }
-        } @catch (NSException *e) {
-            // Skip inaccessible properties
-        }
-    }
-
-    free(properties);
-    return bestURL;
 }
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
@@ -284,177 +166,6 @@
 
     return [SCIUtils getVideoUrl:video];
 }
-
-// === OUR CUSTOM VIDEO DOWNLOAD HELPERS (preserved from our fork) ===
-
-+ (NSURL *)getVideoUrlForPostItem:(IGPostItem *)postItem {
-    @try {
-        if (!postItem) return nil;
-        
-        IGVideo *video = postItem.video;
-        if (!video) return nil;
-        
-        return [SCIUtils getVideoUrl:video];
-    }
-    @catch (NSException *exception) {
-        NSLog(@"[SCInsta] getVideoUrlForPostItem: Exception: %@", exception);
-        return nil;
-    }
-}
-
-+ (NSURL *)getCarouselVideoUrlFromView:(UIView *)view {
-    @try {
-        if (!view) return nil;
-        
-        // Search for IGPageMediaView in the view hierarchy (up and down)
-        // First, search upward through superviews
-        UIView *current = view;
-        while (current) {
-            if ([current isKindOfClass:NSClassFromString(@"IGPageMediaView")]) {
-                IGPageMediaView *pageView = (IGPageMediaView *)current;
-                IGPostItem *currentItem = [pageView currentMediaItem];
-                if (currentItem) {
-                    NSURL *url = [SCIUtils getVideoUrlForPostItem:currentItem];
-                    if (url) {
-                        NSLog(@"[SCInsta] getCarouselVideoUrl: Found video URL from carousel current item (upward search)");
-                        return url;
-                    }
-                }
-            }
-            current = current.superview;
-        }
-        
-        // Then search downward in the view's subviews
-        IGPageMediaView *pageView = (IGPageMediaView *)[self _findViewOfClass:NSClassFromString(@"IGPageMediaView") inView:view depth:0 maxDepth:10];
-        if (pageView) {
-            IGPostItem *currentItem = [pageView currentMediaItem];
-            if (currentItem) {
-                NSURL *url = [SCIUtils getVideoUrlForPostItem:currentItem];
-                if (url) {
-                    NSLog(@"[SCInsta] getCarouselVideoUrl: Found video URL from carousel current item (downward search)");
-                    return url;
-                }
-            }
-        }
-        
-        // Also try searching from parent controller's view
-        UIViewController *parentVC = [self nearestViewControllerForView:view];
-        if (parentVC && parentVC.view != view) {
-            IGPageMediaView *pageView2 = (IGPageMediaView *)[self _findViewOfClass:NSClassFromString(@"IGPageMediaView") inView:parentVC.view depth:0 maxDepth:10];
-            if (pageView2) {
-                IGPostItem *currentItem = [pageView2 currentMediaItem];
-                if (currentItem) {
-                    NSURL *url = [SCIUtils getVideoUrlForPostItem:currentItem];
-                    if (url) {
-                        NSLog(@"[SCInsta] getCarouselVideoUrl: Found video URL from carousel current item (controller search)");
-                        return url;
-                    }
-                }
-            }
-        }
-        
-        return nil;
-    }
-    @catch (NSException *exception) {
-        NSLog(@"[SCInsta] getCarouselVideoUrlFromView: Exception: %@", exception);
-        return nil;
-    }
-}
-
-+ (UIView *)_findViewOfClass:(Class)cls inView:(UIView *)view depth:(int)depth maxDepth:(int)maxDepth {
-    @try {
-        if (!view || !cls || depth > maxDepth) return nil;
-        
-        if ([view isKindOfClass:cls]) return view;
-        
-        for (UIView *subview in view.subviews) {
-            UIView *found = [self _findViewOfClass:cls inView:subview depth:depth + 1 maxDepth:maxDepth];
-            if (found) return found;
-        }
-        
-        return nil;
-    }
-    @catch (NSException *exception) {
-        return nil;
-    }
-}
-
-// AVPlayer cache-based video URL extraction fallback
-// Used when Instagram changes how they serve/secure video and model extraction fails.
-// Finds the URL the currently-playing AVPlayer is streaming from so we can download it.
-+ (NSURL *)getCachedVideoUrlForView:(UIView *)view {
-    @try {
-        if (!view) return nil;
-
-        AVPlayer *player = [self _findAVPlayerInView:view depth:0 maxDepth:15];
-        if (!player) return nil;
-
-        AVPlayerItem *currentItem = player.currentItem;
-        if (!currentItem) return nil;
-
-        AVAsset *asset = currentItem.asset;
-        if (!asset) return nil;
-
-        if ([asset isKindOfClass:[AVURLAsset class]]) {
-            NSURL *url = ((AVURLAsset *)asset).URL;
-            if (url) {
-                NSLog(@"[SCInsta] getCachedVideoUrlForView: Found video URL from AVPlayer: %@", url);
-                return url;
-            }
-        }
-
-        return nil;
-    }
-    @catch (NSException *exception) {
-        NSLog(@"[SCInsta] getCachedVideoUrlForView: Exception: %@", exception);
-        return nil;
-    }
-}
-
-+ (AVPlayer *)_findAVPlayerInView:(UIView *)view depth:(int)depth maxDepth:(int)maxDepth {
-    @try {
-        if (!view || depth > maxDepth) return nil;
-
-        CALayer *layer = view.layer;
-        if (layer) {
-            AVPlayer *player = [self _findAVPlayerInLayer:layer depth:0 maxDepth:5];
-            if (player) return player;
-        }
-
-        for (UIView *subview in view.subviews) {
-            AVPlayer *player = [self _findAVPlayerInView:subview depth:depth + 1 maxDepth:maxDepth];
-            if (player) return player;
-        }
-
-        return nil;
-    }
-    @catch (NSException *exception) {
-        return nil;
-    }
-}
-
-+ (AVPlayer *)_findAVPlayerInLayer:(CALayer *)layer depth:(int)depth maxDepth:(int)maxDepth {
-    @try {
-        if (!layer || depth > maxDepth) return nil;
-
-        if ([layer isKindOfClass:[AVPlayerLayer class]]) {
-            AVPlayer *player = ((AVPlayerLayer *)layer).player;
-            if (player) return player;
-        }
-
-        for (CALayer *sublayer in layer.sublayers) {
-            AVPlayer *player = [self _findAVPlayerInLayer:sublayer depth:depth + 1 maxDepth:maxDepth];
-            if (player) return player;
-        }
-
-        return nil;
-    }
-    @catch (NSException *exception) {
-        return nil;
-    }
-}
-
-// === END OF OUR CUSTOM VIDEO DOWNLOAD HELPERS ===
 
 // View Controllers
 + (UIViewController *)viewControllerForView:(UIView *)view {

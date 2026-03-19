@@ -1,11 +1,11 @@
 # SCInsta
 A feature-rich tweak for Instagram on iOS!\
-`Version v0.8.1` | `Tested on Instagram 384.0.0`
+`Version v1.1.1` | `Tested on Instagram 418.2.0`
 
 ---
 
 > [!NOTE]
-> ⚙️ &nbsp;To modify SCInsta's settings, check out [this page](https://github.com/SoCuul/SCInsta/wiki/Modify-Settings) for help\
+> ⚙️ &nbsp;To modify SCInsta's settings, check out [this section below](https://github.com/SoCuul/SCInsta#Opening-Tweak-Settings) for help\
 > ❓ &nbsp;If you have any questions or need help with the tweak, visit the [Discussions](https://github.com/SoCuul/SCInsta/discussions) tab
 >
 > ✨ &nbsp;If you have a feature request, [click here](https://github.com/SoCuul/SCInsta/issues/new/choose)\
@@ -22,75 +22,91 @@ A feature-rich tweak for Instagram on iOS!\
 
 # Features
 ### General
+- Hide ads
 - Hide Meta AI
 - Copy description
-- Use detailed color picker
-- Enable hidden text effects/styles
 - Do not save recent searches
-- Hide notes tray
-- Hide friends map
+- Use detailed (native) color picker
+- Enable liquid glass buttons
+- Enable teen app icons
+- IG Notes:
+  - Hide notes tray
+  - Hide friends map
+  - Enable note theming
+  - Custom note themes
+- Focus/Distractions
+  - No suggested users
+  - No suggested chats
+  - Hide trending searches
+  - Hide explore posts grid
 
 ### Feed
-- Hide ads
 - Hide stories tray
 - Hide entire feed
 - No suggested posts
 - No suggested for you (accounts)
 - No suggested reels
 - No suggested threads posts
+- Disable video autoplay
 
-### Save media
+### Reels
+- Modify tap controls
+- Always show progress scrubber
+- Disable auto-unmuting reels
+- Confirm reel refresh
+- Hide reels header
+- Hide reels blend button
+- Disable scrolling reels
+- Prevent doom scrolling (limit maximum viewable reels)
+
+### Saving
 - Download feed posts
 - Download reels
 - Download stories
 - Save profile picture
+- *Customize finger count for long-press*
+- *Customize hold time for long-press*
 
-### Story and messages
-- Keep deleted message
-- Disable screenshot detection
+### Stories and messages
+- Keep deleted messages
+- Manually mark messages as seen
+- Disable typing status
 - Unlimited replay of direct stories
-- Disabling sending read receipts
-- Disable story seen receipt
 - Disable view-once limitations
-
-### Confirm actions
-- Confirm like: Posts (and stories)
-- Confirm like: Reels
-- Confirm follow
-- Confirm call
-- Confirm voice messages
-- Confirm shh mode (disappearing messages)
-- Confirm sticker interaction
-- Confirm posting comment
-- Confirm changing direct message theme
-
-### Focus/Distractions
-- Hide explore posts grid
-- Hide trending searches
-- No suggested chats
-- No suggested users
-- Disable scrolling reels
+- Disable screenshot detection
+- Disable story seen receipt
+- Disable instants creation
 
 ### Navigation
-- Hide explore tab
-- Hide create tab
-- Hide reels tab
+- Modify tab bar icon order
+- Modify swiping between tabs
+- Hiding tabs
+  - Hide feed tab
+  - Hide explore tab
+  - Hide reels tab
+  - Hide create tab
 
-### Security
-- Padlock (require biometric authentication to open the app)
+### Confirm actions
+- Confirm like: Posts/Stories
+- Confirm like: Reels
+- Confirm follow
+- Confirm repost
+- Confirm call
+- Confirm voice messages
+- Confirm follow requests
+- Confirm shh mode (disappearing messages)
+- Confirm posting comment
+- Confirm changing direct message theme
+- Confirm sticker interaction
 
 ### Optimization
 - Automatically clears unneeded cache folders, reducing the size of your Instagram installation
 
-### Built-in Tweak Settings
-[How to modify SCInsta settings](https://github.com/SoCuul/SCInsta/wiki/Modify-Settings)
+# Opening Tweak Settings
 
-# In-App Screenshots
-
-|                                             |                                             |                                             |
-|:-------------------------------------------:|:-------------------------------------------:|:-------------------------------------------:|
-| <img src="https://i.imgur.com/EZIktAw.png"> | <img src="https://i.imgur.com/aA3g1Vw.png"> | <img src="https://i.imgur.com/QdyFbo4.png"> |
-| <img src="https://i.imgur.com/Ydd61cZ.png"> | <img src="https://i.imgur.com/XGOn3lY.png"> | <img src="https://i.imgur.com/n4GFWl8.png"> |
+|                                             |                                             |
+|:-------------------------------------------:|:-------------------------------------------:|
+| <img src="https://i.imgur.com/uPMcugZ.png"> | <img src="https://i.imgur.com/ctIiL7i.png"> |
 
 # Building from source
 ### Prerequisites
@@ -99,11 +115,12 @@ A feature-rich tweak for Instagram on iOS!\
 - [CMake](https://formulae.brew.sh/formula/cmake#default) (`brew install cmake`)
 - [Theos](https://theos.dev/docs/installation)
 - [cyan](https://github.com/asdfzxcvbn/pyzule-rw?tab=readme-ov-file#install-instructions) **\*only required for sideloading**
+- [ipapatch](https://github.com/asdfzxcvbn/ipapatch/releases/latest) **\*only required for sideloading**
 
 ### Setup
-1. Install iOS 14.5 frameworks for theos
+1. Install iOS 16.2 frameworks for theos
    1. [Click to download iOS SDKs](https://github.com/xybp888/iOS-SDKs/archive/refs/heads/master.zip)
-   2. Unzip, then copy the `iPhoneOS14.5.sdk` folder into `~/theos/sdks`
+   2. Unzip, then copy the `iPhoneOS16.2.sdk` folder into `~/theos/sdks`
 2. Clone SCInsta repo from GitHub: `git clone --recurse-submodules https://github.com/SoCuul/SCInsta`
 3. **For sideloading**: Download a decrypted Instagram IPA from a trusted source, making sure to rename it to `com.burbn.instagram.ipa`.
    Then create a folder called `packages` inside of the `SCInsta` folder, and move the Instagram IPA file into it. 

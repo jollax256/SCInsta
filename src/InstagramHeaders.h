@@ -486,8 +486,6 @@
 @property (readonly, nonatomic) IGCreationActionBarButton *button;
 @end
 
-@interface IGDirectNotesTrayRowViewModel : NSObject
-@end
 
 
 /////////////////////////////////////////////////////////////////////////////

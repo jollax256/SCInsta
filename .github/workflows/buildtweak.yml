@@ -1,30 +1,18 @@
-# Inspired heavily by the following workflows
-# https://github.com/arichornlover/uYouEnhanced/blob/main/.github/workflows/buildapp.yml
-# https://github.com/ISnackable/YTCubePlus/blob/main/.github/workflows/Build.yml
-# https://github.com/BandarHL/BHTwitter/actions/workflows/build.yml
-
-name: Build and Package SCInsta
+name: Build SCInsta tweak for Rootless
 
 on:
+    push:
+        branches:
+            - 'main'
+            - 'dev'
     workflow_dispatch:
-        inputs:
-            decrypted_instagram_url:
-                description: "The direct URL to the decrypted Instagram IPA"
-                default: ""
-                required: true
-                type: string
-            upload_artifact:
-                description: "Upload Artifact"
-                default: true
-                required: false
-                type: boolean
   
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 jobs:
     build:
-        name: Build SCInsta
+        name: Build SCInsta Rootless
         runs-on: macos-latest
         permissions:
             contents: write
@@ -71,19 +59,6 @@ jobs:
               env:
                 THEOS: ${{ github.workspace }}/theos
 
-            - name: Prepare Instagram IPA
-              run: |
-                cd main
-
-                mkdir -p packages
-                wget "$Instagram_URL" --no-verbose -O packages/com.burbn.instagram.ipa
-
-                ls -la packages
-                
-              env:
-                THEOS: ${{ github.workspace }}/theos
-                Instagram_URL: ${{ inputs.decrypted_instagram_url }}
-
             - name: Get SCInsta Version
               id: scinsta_version
               run: |
@@ -92,47 +67,30 @@ jobs:
                 echo "SCINSTA_VERSION=${SCINSTA_VERSION}" >> "$GITHUB_ENV"
                 echo "version=${SCINSTA_VERSION}" >> "$GITHUB_OUTPUT"
             
-            - name: Build SCInsta tweak for sideloading (as IPA)
-              run: |
-                pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
-                
+            - name: Build SCInsta tweak for Rootless
+              run: |                
                 cd main
-                curl -Lo ipapatch https://github.com/asdfzxcvbn/ipapatch/releases/download/v2.1.3/ipapatch.macos-arm64
-                chmod +x ipapatch
-                export PATH=.:$PATH
                 ls -la
 
-                ./build.sh sideload
+                ./build.sh rootless
                 ls -la packages
                 
               env:
                 THEOS: ${{ github.workspace }}/theos
 
-            - name: Rename IPA to include version info
+            - name: Rename deb to include version info
               run: |
                 cd main/packages
-                mv "$(ls -t | head -n1)" "SCInsta_sideloaded_v${SCINSTA_VERSION}.ipa"
+                mv "$(ls -t | head -n1)" "com.socuul.scinsta_${SCINSTA_VERSION}+debug-rootless.deb"
 
             - name: Pass package name to upload action
               id: package_name
               run: |
-                echo "package=$(ls -t main/packages |  head -n1)" >> "$GITHUB_OUTPUT"
+                echo "package=$(ls -t main/packages | head -n1)" >> "$GITHUB_OUTPUT"
 
             - name: Upload Artifact
-              if: ${{ inputs.upload_artifact }}
               uses: actions/upload-artifact@v4
               with:
-                name: SCInsta_sideloaded_v${{ steps.scinsta_version.outputs.version }}
+                name: ${{ steps.package_name.outputs.package }}
                 path: ${{ github.workspace }}/main/packages/${{ steps.package_name.outputs.package }}
                 if-no-files-found: error
-
-            - name: Create Release
-              uses: softprops/action-gh-release@v2.0.6
-              with:
-                name: SCInsta_sideloaded_v${{ steps.scinsta_version.outputs.version }}
-                files: ${{ github.workspace }}/main/packages/SCInsta_sideloaded_v*.ipa
-                draft: true
-
-            - name: Output Release URL
-              run: |
-                echo "::notice::Release available at: https://github.com/${{ github.repository }}/releases"

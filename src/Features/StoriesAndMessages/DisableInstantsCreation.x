@@ -28,4 +28,31 @@
 + (_Bool)isQuicksnapNotesTrayEmptyPogEnabled:(id)enabled {
     QUICKSNAPENABLED(%orig);
 }
+// + (_Bool)isStoriesSpringEnabled:(id)enabled {
+//     return true;
+// }
+// + (_Bool)shouldEnableScreenshotBlocking:(id)blocking {
+//     return false;
+// }
+// + (_Bool)areFiltersEnabled:(id)enabled {
+//     return true;
+// }
+// + (_Bool)isBottomsheetCustomAudienceEnabled:(id)enabled {
+//     return true;
+// }
+// + (_Bool)isVideoCaptureEnabled:(id)enabled {
+//     return true;
+// }
 %end
+
+// %hook IGDirectNotesTrayRowCell
+// - (_Bool)isQuicksnapPeekVisible {
+//     return true;
+// }
+// %end
+
+// %hook IGDirectNotesTrayRowSectionController
+// - (_Bool)isQuicksnapPeekVisible {
+//     return true;
+// }
+// %end

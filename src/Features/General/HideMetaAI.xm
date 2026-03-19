@@ -291,11 +291,7 @@
 // "Click to summarize" pill under DM navigation bar
 %hook IGDirectThreadViewMetaAISummaryFeatureController
 - (id)initWithUserSession:(id)arg1 mutableStateProvider:(id)arg2 threadViewControllerFeatureDelegate:(id)arg3 presentingViewController:(id)arg4 {
-    if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
-        return nil;
-    }
-
-    return %orig;
+    return nil;
 }
 %end
 

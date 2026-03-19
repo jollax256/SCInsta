@@ -28,13 +28,11 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     NSLog(@"[SCInsta] Adding feed photo download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
@@ -83,42 +81,25 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     NSLog(@"[SCInsta] Adding feed video download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    // 1. Model-based extraction (single video post)
     NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:[self mediaCellFeedItem]];
-
-    // 2. Carousel extraction (video on non-first slide)
-    if (!videoUrl) {
-        videoUrl = [SCIUtils getCarouselVideoUrlFromView:(UIView *)self];
-    }
-
-    // 3. Cached URL from AVPlayer (fallback if IG changes how they serve video)
-    if (!videoUrl) {
-        videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
-    }
-    if (!videoUrl) {
-        UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
-        if (parentVC) videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-    }
-
     if (!videoUrl) {
         [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from post"];
+
         return;
     }
 
-    // Download video via our reliable downloader
+    // Download video & show in share menu
     initDownloaders();
     [videoDownloadDelegate downloadFileWithURL:videoUrl
                                  fileExtension:[[videoUrl lastPathComponent] pathExtension]
@@ -141,13 +122,11 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     NSLog(@"[SCInsta] Adding reels photo download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
@@ -183,37 +162,25 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     NSLog(@"[SCInsta] Adding reels video download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
-
-    // 1. Model-based extraction
+    
     NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.video];
-
-    // 2. Cached URL from AVPlayer (fallback if IG changes how they serve video)
-    if (!videoUrl) {
-        videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
-    }
-    if (!videoUrl) {
-        UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
-        if (parentVC) videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-    }
-
     if (!videoUrl) {
         [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from reel"];
+
         return;
     }
 
-    // Download video via our reliable downloader
+    // Download video & show in share menu
     initDownloaders();
     [videoDownloadDelegate downloadFileWithURL:videoUrl
                                  fileExtension:[[videoUrl lastPathComponent] pathExtension]
@@ -236,13 +203,11 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     NSLog(@"[SCInsta] Adding story photo download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
@@ -276,37 +241,26 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     //NSLog(@"[SCInsta] Adding story video download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    // 1. Model-based extraction
     NSURL *videoUrl = [SCIUtils getVideoUrlForMedia:self.item];
-
-    // 2. Cached URL from AVPlayer (fallback if IG changes how they serve video)
-    if (!videoUrl) {
-        videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
-    }
-    if (!videoUrl) {
-        UIViewController *parentVC = [SCIUtils nearestViewControllerForView:(UIView *)self];
-        if (parentVC) videoUrl = [SCIUtils getCachedVideoUrlForView:parentVC.view];
-    }
-
+    
     if (!videoUrl) {
         [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+
         return;
     }
 
-    // Download video via our reliable downloader
+    // Download video & show in share menu
     initDownloaders();
     [videoDownloadDelegate downloadFileWithURL:videoUrl
                                  fileExtension:[[videoUrl lastPathComponent] pathExtension]
@@ -326,62 +280,47 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     //NSLog(@"[SCInsta] Adding story video download long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = [SCIUtils getDoublePref:@"dw_finger_duration"];
-    longPress.numberOfTouchesRequired = (NSUInteger)[SCIUtils getDoublePref:@"dw_finger_count"];
+    longPress.numberOfTouchesRequired = [SCIUtils getDoublePref:@"dw_finger_count"];
 
     [self addGestureRecognizer:longPress];
 }
 %new - (void)handleLongPress:(UILongPressGestureRecognizer *)sender {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
-    NSURL *videoUrl = nil;
+    NSURL *videoUrl;
 
-    // 1. Try caption delegate (story video)
     IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
     if (captionDelegate) {
         videoUrl = [SCIUtils getVideoUrlForMedia:captionDelegate.currentStoryItem];
     }
     else {
         // Direct messages video player
-        @try {
-            id parentVC = [SCIUtils nearestViewControllerForView:self];
-            if (parentVC && [parentVC isKindOfClass:%c(IGDirectVisualMessageViewerController)]) {
-                IGDirectVisualMessageViewerViewModeAwareDataSource *_dataSource = MSHookIvar<IGDirectVisualMessageViewerViewModeAwareDataSource *>(parentVC, "_dataSource");
-                if (_dataSource) {
-                    IGDirectVisualMessage *_currentMessage = MSHookIvar<IGDirectVisualMessage *>(_dataSource, "_currentMessage");
-                    if (_currentMessage) {
-                        IGVideo *rawVideo = _currentMessage.rawVideo;
-                        if (rawVideo) {
-                            videoUrl = [SCIUtils getVideoUrl:rawVideo];
-                        }
-                    }
-                }
-            }
-        } @catch (NSException *e) {
-            NSLog(@"[SCInsta] Story legacy DM video extraction failed: %@", e);
-        }
-    }
+        id parentVC = [SCIUtils nearestViewControllerForView:self];
+        if (!parentVC || ![parentVC isKindOfClass:%c(IGDirectVisualMessageViewerController)]) return;
 
-    // 2. Cached URL from AVPlayer (fallback if IG changes how they serve video)
-    if (!videoUrl) {
-        videoUrl = [SCIUtils getCachedVideoUrlForView:(UIView *)self];
+        IGDirectVisualMessageViewerViewModeAwareDataSource *_dataSource = MSHookIvar<IGDirectVisualMessageViewerViewModeAwareDataSource *>(parentVC, "_dataSource");
+        if (!_dataSource) return;
+        
+        IGDirectVisualMessage *_currentMessage = MSHookIvar<IGDirectVisualMessage *>(_dataSource, "_currentMessage"); 
+        if (!_currentMessage) return;
+        
+        IGVideo *rawVideo = _currentMessage.rawVideo;
+        if (!rawVideo) return;
+        
+        videoUrl = [SCIUtils getVideoUrl:rawVideo];
     }
-    if (!videoUrl) {
-        UIViewController *vc = [SCIUtils nearestViewControllerForView:(UIView *)self];
-        if (vc) videoUrl = [SCIUtils getCachedVideoUrlForView:vc.view];
-    }
-
+    
     if (!videoUrl) {
         [SCIUtils showErrorHUDWithDescription:@"Could not extract video url from story"];
+
         return;
     }
 
-    // Download video via our reliable downloader
+    // Download video & show in share menu
     initDownloaders();
     [videoDownloadDelegate downloadFileWithURL:videoUrl
                                  fileExtension:[[videoUrl lastPathComponent] pathExtension]
@@ -403,8 +342,6 @@ static void initDownloaders () {
     return;
 }
 %new - (void)addLongPressGestureRecognizer {
-    if ([SCIUtils existingLongPressGestureRecognizerForView:self]) return;
-
     NSLog(@"[SCInsta] Adding profile picture long press gesture recognizer");
 
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
