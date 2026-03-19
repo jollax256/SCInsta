@@ -118,9 +118,10 @@
     JGProgressHUD *hud = [[JGProgressHUD alloc] init];
     hud.textLabel.text = errorDesc;
     hud.indicatorView = [[JGProgressHUDErrorIndicatorView alloc] init];
+    hud.interactionType = JGProgressHUDInteractionTypeBlockNoTouches;
 
     [hud showInView:topMostController().view];
-    [hud dismissAfterDelay:4.0];
+    [hud dismissAfterDelay:dismissDelay];
 
     return hud;
 }

@@ -27,6 +27,6 @@
 
 - (void)cancelDownload;
 
-- (NSURL *)moveFileToCacheDir:(NSURL *)oldPath;
+- (NSURL *)moveFileToCacheDir:(NSURL *)oldPath copyInstead:(BOOL)copyInstead;
 
 @end

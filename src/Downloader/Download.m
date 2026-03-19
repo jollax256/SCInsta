@@ -21,6 +21,7 @@
     // Show progress gui
     self.hud = [[JGProgressHUD alloc] init];
     self.hud.textLabel.text = hudLabel != nil ? hudLabel : @"Downloading";
+    self.hud.interactionType = JGProgressHUDInteractionTypeBlockTouchesOnHUDView;
 
     if (self.showProgress) {
         JGProgressHUDRingIndicatorView *indicatorView = [[JGProgressHUDRingIndicatorView alloc] init ];
