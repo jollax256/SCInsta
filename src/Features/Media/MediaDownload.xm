@@ -94,12 +94,56 @@ static AVPlayer *sciFindPlayerInLayerTree(CALayer *root, NSUInteger depth) {
     return nil;
 }
 
+// Probe a single object's ivars for an AVPlayer instance
+static AVPlayer *sciProbeObjForPlayer(id obj) {
+    if (!obj) return nil;
+    NSArray *names = @[@"_player", @"_avPlayer", @"_videoPlayer",
+                       @"_statefulVideoPlayer", @"_mediaPlayer",
+                       @"_avPlayerView", @"_videoPlayerView"];
+    for (NSString *name in names) {
+        @try {
+            id val = [SCIUtils getIvarForObj:obj name:[name UTF8String]];
+            if (!val) continue;
+            if ([val isKindOfClass:[AVPlayer class]]) {
+                AVPlayer *p = (AVPlayer *)val;
+                if (p.currentItem) return p;
+            }
+            // The ivar might be a wrapper that has a .player or .avPlayer
+            NSArray *subSels = @[@"player", @"avPlayer"];
+            for (NSString *s in subSels) {
+                if ([val respondsToSelector:NSSelectorFromString(s)]) {
+                    id sub = [val valueForKey:s];
+                    if ([sub isKindOfClass:[AVPlayer class]] && ((AVPlayer *)sub).currentItem)
+                        return (AVPlayer *)sub;
+                }
+            }
+        } @catch (...) {}
+    }
+    return nil;
+}
+
+// Walk the subview tree (breadth-first, bounded) looking for an AVPlayer
+static AVPlayer *sciFindPlayerInViewTree(UIView *root, int depth) {
+    if (!root || depth > 10) return nil;
+    AVPlayer *p = sciProbeObjForPlayer(root);
+    if (p) return p;
+    for (UIView *sub in [root.subviews copy]) {
+        p = sciFindPlayerInViewTree(sub, depth + 1);
+        if (p) return p;
+    }
+    return nil;
+}
+
 static AVPlayer *sciFindAnyPlayingPlayer(void) {
     @try {
         NSArray<UIWindow *> *windows = [UIApplication sharedApplication].windows;
         for (UIWindow *window in [windows copy]) {
             if (!window || window.isHidden) continue;
+            // 1. Layer tree scan (AVPlayerLayer)
             AVPlayer *p = sciFindPlayerInLayerTree(window.layer, 0);
+            if (p) return p;
+            // 2. View ivar scan (stateful players, wrappers)
+            p = sciFindPlayerInViewTree(window, 0);
             if (p) return p;
         }
     } @catch (NSException *e) {}
@@ -500,6 +544,47 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
    REELS — Videos
    ══════════════════════════════════════════════ */
 
+// Safely extract the media/video object from an IGSundialViewerVideoCell.
+// Instagram frequently renames or removes the .video property, so we probe
+// multiple selector names and ivar names instead of relying on one.
+static id sciGetReelMedia(id cell) {
+    if (!cell) return nil;
+    // Try property selectors first
+    NSArray *selectorNames = @[@"video", @"media", @"post", @"mediaItem",
+                                @"currentMedia", @"feedItem", @"item",
+                                @"videoMedia", @"reelMedia"];
+    for (NSString *selName in selectorNames) {
+        @try {
+            SEL sel = NSSelectorFromString(selName);
+            if ([cell respondsToSelector:sel]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                id result = [cell performSelector:sel];
+#pragma clang diagnostic pop
+                if (result) {
+                    NSLog(@"[SCInsta] sciGetReelMedia: found via -%@", selName);
+                    return result;
+                }
+            }
+        } @catch (...) {}
+    }
+    // Try ivars
+    NSArray *ivarNames = @[@"_video", @"_media", @"_post", @"_mediaItem",
+                           @"_currentMedia", @"_feedItem", @"_item",
+                           @"_videoMedia", @"_reelMedia"];
+    for (NSString *ivarName in ivarNames) {
+        @try {
+            id val = [SCIUtils getIvarForObj:cell name:[ivarName UTF8String]];
+            if (val) {
+                NSLog(@"[SCInsta] sciGetReelMedia: found via ivar %@", ivarName);
+                return val;
+            }
+        } @catch (...) {}
+    }
+    NSLog(@"[SCInsta] sciGetReelMedia: could not find media on %@", NSStringFromClass([cell class]));
+    return nil;
+}
+
 %hook IGSundialViewerVideoCell
 - (void)didMoveToSuperview {
     %orig;
@@ -514,8 +599,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
+        id media = sciGetReelMedia(self);
         NSString *diag = nil;
-        NSURL *videoUrl = sciGetVideoURL(self.video, self, &diag);
+        NSURL *videoUrl = sciGetVideoURL(media, self, &diag);
         if (!videoUrl) {
             NSLog(@"[SCInsta] Reel: no direct URL, trying export. Diag: %@", diag ?: @"none");
             initDownloaders();
@@ -598,6 +684,34 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
    STORIES — Videos (modern)
    ══════════════════════════════════════════════ */
 
+// Safely extract a media/item object from a story view using multiple selectors/ivars.
+static id sciGetStoryMedia(id view) {
+    if (!view) return nil;
+    NSArray *selectorNames = @[@"item", @"media", @"currentStoryItem",
+                                @"storyItem", @"mediaItem", @"video"];
+    for (NSString *selName in selectorNames) {
+        @try {
+            SEL sel = NSSelectorFromString(selName);
+            if ([view respondsToSelector:sel]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                id result = [view performSelector:sel];
+#pragma clang diagnostic pop
+                if (result) return result;
+            }
+        } @catch (...) {}
+    }
+    NSArray *ivarNames = @[@"_item", @"_media", @"_currentStoryItem",
+                           @"_storyItem", @"_mediaItem", @"_video"];
+    for (NSString *ivarName in ivarNames) {
+        @try {
+            id val = [SCIUtils getIvarForObj:view name:[ivarName UTF8String]];
+            if (val) return val;
+        } @catch (...) {}
+    }
+    return nil;
+}
+
 %hook IGStoryModernVideoView
 - (void)didMoveToSuperview {
     %orig;
@@ -612,8 +726,9 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
     if (sender.state != UIGestureRecognizerStateBegan) return;
 
     @try {
+        id media = sciGetStoryMedia(self);
         NSString *diag = nil;
-        NSURL *videoUrl = sciGetVideoURL(self.item, self, &diag);
+        NSURL *videoUrl = sciGetVideoURL(media, self, &diag);
         if (!videoUrl) {
             NSLog(@"[SCInsta] Story (modern): no direct URL, trying export. Diag: %@", diag ?: @"none");
             initDownloaders();
@@ -656,11 +771,20 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         NSURL *videoUrl = nil;
         NSString *diag = nil;
 
-        // 1. Try sciGetVideoURL (layer scan + ivar probe + API)
-        IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
-        if (captionDelegate) {
+        // 1. Try sciGetVideoURL with safe media extraction
+        id media = nil;
+        @try {
+            IGStoryFullscreenSectionController *captionDelegate = self.captionDelegate;
+            if (captionDelegate) {
+                media = captionDelegate.currentStoryItem;
+            }
+        } @catch (...) {}
+        // Also try extracting from self using the safe helper
+        if (!media) media = sciGetStoryMedia(self);
+
+        if (media) {
             @try {
-                videoUrl = sciGetVideoURL(captionDelegate.currentStoryItem, self, &diag);
+                videoUrl = sciGetVideoURL(media, self, &diag);
             } @catch (...) {}
         }
 
