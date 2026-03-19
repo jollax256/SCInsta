@@ -30,3 +30,4 @@
 - (NSURL *)moveFileToCacheDir:(NSURL *)oldPath copyInstead:(BOOL)copyInstead;
 
 @end
+
