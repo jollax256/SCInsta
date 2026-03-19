@@ -144,16 +144,40 @@
 + (NSURL *)getVideoUrl:(IGVideo *)video {
     if (!video) return nil;
 
-    // The past (pre v398)
-    if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
-        NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
-        NSString *urlString = sorted.firstObject[@"url"];
-        return urlString.length ? [NSURL URLWithString:urlString] : nil;
+    @try {
+        // Legacy API (pre Instagram v398): returns array of dicts sorted by size ascending
+        if ([video respondsToSelector:@selector(sortedVideoURLsBySize)]) {
+            NSArray<NSDictionary *> *sorted = [video sortedVideoURLsBySize];
+            // Last object = largest / highest quality
+            NSDictionary *best = sorted.lastObject;
+            NSString *urlString = best[@"url"];
+            if (urlString.length) return [NSURL URLWithString:urlString];
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrl sortedVideoURLsBySize exception: %@", e);
     }
 
-    // The present (post v398)
-    if ([video respondsToSelector:@selector(allVideoURLs)]) {
-        return [[video allVideoURLs] anyObject];
+    @try {
+        // Modern API (post Instagram v398): returns an NSSet of NSURL objects
+        if ([video respondsToSelector:@selector(allVideoURLs)]) {
+            NSSet *urls = [video allVideoURLs];
+            if (!urls.count) return nil;
+
+            // Pick the URL whose absolute string is longest – a reliable proxy for
+            // the highest-bitrate variant (CDN URLs embed quality params).
+            NSURL *best = nil;
+            NSUInteger bestLen = 0;
+            for (NSURL *u in urls) {
+                NSUInteger len = u.absoluteString.length;
+                if (len > bestLen) {
+                    bestLen = len;
+                    best = u;
+                }
+            }
+            return best;
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrl allVideoURLs exception: %@", e);
     }
 
     return nil;
@@ -161,10 +185,14 @@
 + (NSURL *)getVideoUrlForMedia:(IGMedia *)media {
     if (!media) return nil;
 
-    IGVideo *video = media.video;
-    if (!video) return nil;
-
-    return [SCIUtils getVideoUrl:video];
+    @try {
+        IGVideo *video = media.video;
+        if (!video) return nil;
+        return [SCIUtils getVideoUrl:video];
+    } @catch (NSException *e) {
+        NSLog(@"[SCInsta] getVideoUrlForMedia exception: %@", e);
+    }
+    return nil;
 }
 
 // View Controllers
