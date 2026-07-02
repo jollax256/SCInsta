@@ -437,15 +437,46 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
     @try {
         IGPhoto *photo = nil;
 
-        if ([self.delegate isKindOfClass:%c(IGFeedItemPhotoCell)]) {
-            IGFeedItemPhotoCellConfiguration *cfg = MSHookIvar<IGFeedItemPhotoCellConfiguration *>(self.delegate, "_configuration");
-            if (cfg) photo = MSHookIvar<IGPhoto *>(cfg, "_photo");
-        } else if ([self.delegate isKindOfClass:%c(IGFeedItemPagePhotoCell)]) {
-            IGFeedItemPagePhotoCell *cell = (IGFeedItemPagePhotoCell *)self.delegate;
-            photo = cell.pagePhotoPost.photo;
+        // ── Method 1: public property chain via IGFeedItemMediaCell ──
+        // IGFeedItemPhotoCell extends IGFeedItemMediaCell which has .post (IGMedia)
+        // and IGMedia has .photo — this is the most reliable path.
+        if (!photo && [self.delegate isKindOfClass:%c(IGFeedItemMediaCell)]) {
+            @try {
+                IGMedia *media = ((IGFeedItemMediaCell *)self.delegate).post;
+                if (media) photo = media.photo;
+            } @catch (...) {}
+        }
+
+        // ── Method 2: IGFeedItemPagePhotoCell (carousel/page posts) ──
+        if (!photo && [self.delegate isKindOfClass:%c(IGFeedItemPagePhotoCell)]) {
+            @try {
+                IGFeedItemPagePhotoCell *cell = (IGFeedItemPagePhotoCell *)self.delegate;
+                photo = cell.pagePhotoPost.photo;
+            } @catch (...) {}
+        }
+
+        // ── Method 3: legacy ivar probe (_configuration._photo) ──
+        if (!photo && [self.delegate isKindOfClass:%c(IGFeedItemPhotoCell)]) {
+            @try {
+                id cfg = MSHookIvar<id>(self.delegate, "_configuration");
+                if (cfg) photo = MSHookIvar<IGPhoto *>(cfg, "_photo");
+            } @catch (...) {}
         }
 
         NSURL *photoUrl = sciGetBestPhotoURL(photo);
+
+        // ── Fallback: scan subviews for an IGImageView with a loaded specifier ──
+        if (!photoUrl) {
+            @try {
+                for (UIView *sub in self.subviews) {
+                    if ([sub isKindOfClass:%c(IGImageView)]) {
+                        IGImageSpecifier *spec = ((IGImageView *)sub).imageSpecifier;
+                        if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                }
+            } @catch (...) {}
+        }
+
         if (!photoUrl) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [SCIUtils showErrorHUDWithDescription:@"Could not get photo URL"];
