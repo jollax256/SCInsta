@@ -661,27 +661,22 @@ shouldPersistLastBugReportId:(id)arg6
 
 // Confirm buttons
 
+#define SCI_CONFIRM_ACTION(pref, orig, logMsg) \
+    if ([SCIUtils getBoolPref:pref]) { \
+        NSLog(logMsg); \
+        [SCIUtils showConfirmation:^(void) { orig; }]; \
+    } \
+    else { \
+        orig; \
+    }
+
 %hook IGFeedItemUFICell
 - (void)UFIButtonBarDidTapOnLike:(id)arg1 {
-    if ([SCIUtils getBoolPref:@"like_confirm"]) {
-        NSLog(@"[SCInsta] Confirm post like triggered");
-
-        [SCIUtils showConfirmation:^(void) { %orig; }];
-    }
-    else {
-        %orig;
-    }  
+    SCI_CONFIRM_ACTION(@"like_confirm", %orig, @"[SCInsta] Confirm post like triggered");
 }
 
 - (void)UFIButtonBarDidTapOnRepost:(id)arg1 {
-    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
-        NSLog(@"[SCInsta] Confirm repost triggered");
-
-        [SCIUtils showConfirmation:^(void) { %orig; }];
-    }
-    else {
-        %orig;
-    }
+    SCI_CONFIRM_ACTION(@"repost_confirm", %orig, @"[SCInsta] Confirm repost triggered");
 }
 
 - (void)UFIButtonBarDidLongPressOnRepost:(id)arg1 {
@@ -704,14 +699,7 @@ shouldPersistLastBugReportId:(id)arg6
 
 %hook IGSundialViewerVerticalUFI
 - (void)_didTapLikeButton:(id)arg1 {
-    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
-        NSLog(@"[SCInsta] Confirm reels like triggered");
-
-        [SCIUtils showConfirmation:^(void) { %orig; }];
-    }
-    else {
-        %orig;
-    }
+    SCI_CONFIRM_ACTION(@"like_confirm_reels", %orig, @"[SCInsta] Confirm reels like triggered");
 }
 
 - (void)_didLongPressLikeButton:(id)arg1 {
@@ -724,14 +712,7 @@ shouldPersistLastBugReportId:(id)arg6
 }
 
 - (void)_didTapRepostButton:(id)arg1 {
-    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
-        NSLog(@"[SCInsta] Confirm repost triggered");
-
-        [SCIUtils showConfirmation:^(void) { %orig; }];
-    }
-    else {
-        %orig;
-    }
+    SCI_CONFIRM_ACTION(@"repost_confirm", %orig, @"[SCInsta] Confirm repost triggered");
 }
 
 - (void)_didLongPressRepostButton:(id)arg1 {
