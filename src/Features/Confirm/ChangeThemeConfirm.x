@@ -6,7 +6,7 @@
     if ([SCIUtils getBoolPref:@"change_direct_theme_confirm"]) {
         NSLog(@"[SCInsta] Confirm change direct theme triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     } else {
         %orig;
     }
@@ -15,7 +15,7 @@
     if ([SCIUtils getBoolPref:@"change_direct_theme_confirm"]) {
         NSLog(@"[SCInsta] Confirm change direct theme triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     } else {
         %orig;
     }
@@ -27,7 +27,7 @@
     if ([SCIUtils getBoolPref:@"change_direct_theme_confirm"]) {
         NSLog(@"[SCInsta] Confirm change direct theme triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     } else {
         %orig;
     }

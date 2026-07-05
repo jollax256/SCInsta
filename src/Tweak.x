@@ -666,7 +666,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"like_confirm"]) {
         NSLog(@"[SCInsta] Confirm post like triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     }
     else {
         %orig;
@@ -677,7 +677,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"repost_confirm"]) {
         NSLog(@"[SCInsta] Confirm repost triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     }
     else {
         %orig;
@@ -707,7 +707,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
         NSLog(@"[SCInsta] Confirm reels like triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     }
     else {
         %orig;
@@ -727,7 +727,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"repost_confirm"]) {
         NSLog(@"[SCInsta] Confirm repost triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     }
     else {
         %orig;

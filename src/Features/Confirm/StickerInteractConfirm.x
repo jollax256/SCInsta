@@ -5,7 +5,7 @@
     if ([SCIUtils getBoolPref:@"sticker_interact_confirm"]) {
         NSLog(@"[SCInsta] Confirm sticker interact triggered");
 
-        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
+        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
     } else {
         %orig;
     }
