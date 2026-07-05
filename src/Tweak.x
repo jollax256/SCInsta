@@ -666,9 +666,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"like_confirm"]) {
         NSLog(@"[SCInsta] Confirm post like triggered");
 
-        [SCIUtils showConfirmation:^(void) {
-            _logos_orig$_ungrouped$IGFeedItemUFICell$UFIButtonBarDidTapOnLike$(self, _cmd, arg1);
-        }];
+        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
     }
     else {
         %orig;
@@ -679,9 +677,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"repost_confirm"]) {
         NSLog(@"[SCInsta] Confirm repost triggered");
 
-        [SCIUtils showConfirmation:^(void) {
-            _logos_orig$_ungrouped$IGFeedItemUFICell$UFIButtonBarDidTapOnRepost$(self, _cmd, arg1);
-        }];
+        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
     }
     else {
         %orig;
@@ -711,9 +707,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
         NSLog(@"[SCInsta] Confirm reels like triggered");
 
-        [SCIUtils showConfirmation:^(void) {
-            _logos_orig$_ungrouped$IGSundialViewerVerticalUFI$_didTapLikeButton$(self, _cmd, arg1);
-        }];
+        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
     }
     else {
         %orig;
@@ -733,9 +727,7 @@ shouldPersistLastBugReportId:(id)arg6
     if ([SCIUtils getBoolPref:@"repost_confirm"]) {
         NSLog(@"[SCInsta] Confirm repost triggered");
 
-        [SCIUtils showConfirmation:^(void) {
-            _logos_orig$_ungrouped$IGSundialViewerVerticalUFI$_didTapRepostButton$(self, _cmd, arg1);
-        }];
+        [SCIUtils showConfirmation:ORIG_BLOCK(%orig)];
     }
     else {
         %orig;

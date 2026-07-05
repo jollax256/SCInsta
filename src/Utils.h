@@ -19,6 +19,8 @@
 
 #define SCILogId(prefix, obj) os_log(OS_LOG_DEFAULT, "[SCInsta Test] %{public}@: %{public}@", prefix, obj);
 
+#define ORIG_BLOCK(orig) ^(void) { orig; }
+
 @interface SCIUtils : NSObject
 
 + (BOOL)getBoolPref:(NSString *)key;
