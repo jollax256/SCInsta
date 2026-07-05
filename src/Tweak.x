@@ -661,22 +661,31 @@ shouldPersistLastBugReportId:(id)arg6
 
 // Confirm buttons
 
-#define SCI_CONFIRM_ACTION(pref, orig, logMsg) \
-    if ([SCIUtils getBoolPref:pref]) { \
-        NSLog(logMsg); \
-        [SCIUtils showConfirmation:^(void) { orig; }]; \
-    } \
-    else { \
-        orig; \
-    }
-
 %hook IGFeedItemUFICell
 - (void)UFIButtonBarDidTapOnLike:(id)arg1 {
-    SCI_CONFIRM_ACTION(@"like_confirm", %orig, @"[SCInsta] Confirm post like triggered");
+    if ([SCIUtils getBoolPref:@"like_confirm"]) {
+        NSLog(@"[SCInsta] Confirm post like triggered");
+
+        [SCIUtils showConfirmation:^(void) {
+            _logos_orig$_ungrouped$IGFeedItemUFICell$UFIButtonBarDidTapOnLike$(self, _cmd, arg1);
+        }];
+    }
+    else {
+        %orig;
+    }
 }
 
 - (void)UFIButtonBarDidTapOnRepost:(id)arg1 {
-    SCI_CONFIRM_ACTION(@"repost_confirm", %orig, @"[SCInsta] Confirm repost triggered");
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered");
+
+        [SCIUtils showConfirmation:^(void) {
+            _logos_orig$_ungrouped$IGFeedItemUFICell$UFIButtonBarDidTapOnRepost$(self, _cmd, arg1);
+        }];
+    }
+    else {
+        %orig;
+    }
 }
 
 - (void)UFIButtonBarDidLongPressOnRepost:(id)arg1 {
@@ -699,7 +708,16 @@ shouldPersistLastBugReportId:(id)arg6
 
 %hook IGSundialViewerVerticalUFI
 - (void)_didTapLikeButton:(id)arg1 {
-    SCI_CONFIRM_ACTION(@"like_confirm_reels", %orig, @"[SCInsta] Confirm reels like triggered");
+    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
+        NSLog(@"[SCInsta] Confirm reels like triggered");
+
+        [SCIUtils showConfirmation:^(void) {
+            _logos_orig$_ungrouped$IGSundialViewerVerticalUFI$_didTapLikeButton$(self, _cmd, arg1);
+        }];
+    }
+    else {
+        %orig;
+    }
 }
 
 - (void)_didLongPressLikeButton:(id)arg1 {
@@ -712,7 +730,16 @@ shouldPersistLastBugReportId:(id)arg6
 }
 
 - (void)_didTapRepostButton:(id)arg1 {
-    SCI_CONFIRM_ACTION(@"repost_confirm", %orig, @"[SCInsta] Confirm repost triggered");
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered");
+
+        [SCIUtils showConfirmation:^(void) {
+            _logos_orig$_ungrouped$IGSundialViewerVerticalUFI$_didTapRepostButton$(self, _cmd, arg1);
+        }];
+    }
+    else {
+        %orig;
+    }
 }
 
 - (void)_didLongPressRepostButton:(id)arg1 {
