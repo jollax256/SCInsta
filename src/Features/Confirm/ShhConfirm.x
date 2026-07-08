@@ -5,7 +5,9 @@
     if ([SCIUtils getBoolPref:@"shh_mode_confirm"]) {
         NSLog(@"[SCInsta] Confirm shh mode triggered");
 
-        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
+        [SCIUtils showConfirmation:^{
+            %orig;
+        }];
     } else {
         %orig;
     }
@@ -15,7 +17,9 @@
     if ([SCIUtils getBoolPref:@"shh_mode_confirm"]) {
         NSLog(@"[SCInsta] Confirm shh mode triggered");
 
-        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
+        [SCIUtils showConfirmation:^{
+            %orig;
+        }];
     } else {
         %orig;
     }
@@ -25,7 +29,9 @@
     if ([SCIUtils getBoolPref:@"shh_mode_confirm"]) {
         NSLog(@"[SCInsta] Confirm shh mode triggered");
 
-        [SCIUtils showConfirmation:^(void) L_BRACE %orig; R_BRACE];
+        [SCIUtils showConfirmation:^{
+            %orig;
+        }];
     } else {
         %orig;
     }
