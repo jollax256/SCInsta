@@ -465,13 +465,24 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
 
         NSURL *photoUrl = sciGetBestPhotoURL(photo);
 
-        // ── Fallback: scan subviews for an IGImageView with a loaded specifier ──
+        // ── Fallback: scan subviews for IGImageView or IGImageProgressView with a loaded specifier ──
         if (!photoUrl) {
             @try {
-                for (UIView *sub in self.subviews) {
-                    if ([sub isKindOfClass:%c(IGImageView)]) {
-                        IGImageSpecifier *spec = ((IGImageView *)sub).imageSpecifier;
+                // Recursively search subviews for any image-related views
+                NSMutableArray *queue = [NSMutableArray arrayWithObject:self];
+                while (queue.count > 0 && !photoUrl) {
+                    UIView *current = queue.firstObject;
+                    [queue removeObjectAtIndex:0];
+                    if ([current isKindOfClass:%c(IGImageView)]) {
+                        IGImageSpecifier *spec = ((IGImageView *)current).imageSpecifier;
                         if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                    if ([current isKindOfClass:%c(IGImageProgressView)]) {
+                        IGImageSpecifier *spec = ((IGImageProgressView *)current).imageSpecifier;
+                        if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                    for (UIView *sub in current.subviews) {
+                        [queue addObject:sub];
                     }
                 }
             } @catch (...) {}
@@ -565,6 +576,28 @@ static void sciAddLongPress(UIView *view, id target, SEL action) {
         @try { photo = MSHookIvar<IGPhoto *>(self, "_photo"); } @catch (...) {}
 
         NSURL *photoUrl = sciGetBestPhotoURL(photo);
+
+        // Fallback: scan subviews for image specifier
+        if (!photoUrl) {
+            @try {
+                NSMutableArray *queue = [NSMutableArray arrayWithObject:self];
+                while (queue.count > 0 && !photoUrl) {
+                    UIView *current = queue.firstObject;
+                    [queue removeObjectAtIndex:0];
+                    if ([current isKindOfClass:%c(IGImageView)]) {
+                        IGImageSpecifier *spec = ((IGImageView *)current).imageSpecifier;
+                        if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                    if ([current isKindOfClass:%c(IGImageProgressView)]) {
+                        IGImageSpecifier *spec = ((IGImageProgressView *)current).imageSpecifier;
+                        if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                    for (UIView *sub in current.subviews) {
+                        [queue addObject:sub];
+                    }
+                }
+            } @catch (...) {}
+        }
         if (!photoUrl) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [SCIUtils showErrorHUDWithDescription:@"Could not get photo URL from reel"];
@@ -753,14 +786,26 @@ static id sciGetReelMedia(id cell) {
             photoUrl = [SCIUtils getPhotoUrlForMedia:(IGMedia *)item];
         }
 
-        // Fallback: try IGImageSpecifier from any IGImageView sub-view
+        // Fallback: try IGImageSpecifier from any image-related subview
         if (!photoUrl) {
-            for (UIView *sub in self.subviews) {
-                if ([sub isKindOfClass:%c(IGImageView)]) {
-                    IGImageSpecifier *spec = ((IGImageView *)sub).imageSpecifier;
-                    if (spec.url) { photoUrl = spec.url; break; }
+            @try {
+                NSMutableArray *queue = [NSMutableArray arrayWithObject:self];
+                while (queue.count > 0 && !photoUrl) {
+                    UIView *current = queue.firstObject;
+                    [queue removeObjectAtIndex:0];
+                    if ([current isKindOfClass:%c(IGImageView)]) {
+                        IGImageSpecifier *spec = ((IGImageView *)current).imageSpecifier;
+                        if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                    if ([current isKindOfClass:%c(IGImageProgressView)]) {
+                        IGImageSpecifier *spec = ((IGImageProgressView *)current).imageSpecifier;
+                        if (spec.url) { photoUrl = spec.url; break; }
+                    }
+                    for (UIView *sub in current.subviews) {
+                        [queue addObject:sub];
+                    }
                 }
-            }
+            } @catch (...) {}
         }
 
         if (!photoUrl) {
